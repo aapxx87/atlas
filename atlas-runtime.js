@@ -8776,7 +8776,7 @@ const Cosmos=(()=>{
     {id:'rose',title:'Asteroid B-612',sector:[-2.54,-.21,19],radius:3.34,factor:.48,tint:'#ebbb9b',glow:.46,tilt:.15},
     {id:'belt',title:'Stone Belt',sector:[2.86,.29,26],radius:2.92,factor:.78,tint:'#cb8c75'}
   ];
-  const up=new Vector3(0,1,0), origin=new Vector3();
+  const up=new Vector3(0,1,0), origin=new Vector3(), screenNormal=new Vector3(0,0,1);
   const worldMinZoom=-.32;
   const arrivalFov=38, sunRadius=1.69;
   const initialElevation=.035, mapTilt=1.31;
@@ -9015,7 +9015,7 @@ const Cosmos=(()=>{
     }
 
     const mapOrbit={yaw:0,elevation:initialElevation,zoom:0};
-    const localOrbit={yaw:0,elevation:0,zoom:0,shot:0};
+    const localOrbit={yaw:0,elevation:0,zoom:0,shot:0,roll:0};
     const mapTarget={...mapOrbit}, localTarget={...localOrbit};
     const storyView=new THREE.Quaternion(), storyGoal=new THREE.Quaternion(), storySpin=new THREE.Quaternion();
     const demoView=new THREE.Quaternion();
@@ -9164,7 +9164,7 @@ const Cosmos=(()=>{
 
     function defaultOrbit(entry) {
       const elevation=entry.tilt ?? (entry.isLiving?0:entry.id==='giant'?.26:.46);
-      return {yaw:entry.id==='belt'?-.12:0,elevation,zoom:0,shot:0};
+      return {yaw:entry.id==='belt'?-.12:0,elevation,zoom:0,shot:0,roll:0};
     }
 
     function prepareWorld(entry) {
@@ -9293,14 +9293,22 @@ const Cosmos=(()=>{
       focused.body.userData.replay(id,focused.motionTime);
     }
 
-    function orbit(dx,dy) {
+    function orbit(dx,dy,roll=0) {
       if(journey) return;
+      if(roll) {
+        if(!focused) return;
+        const leftShot=arenaShot();
+        if(leftShot) watchArena();
+        localTarget.roll+=roll;
+        return leftShot;
+      }
       if(focused?.story) {
         const length=Math.hypot(dx,dy);
-        if(length===0) return;
+        if(!length) return;
         const leftShot=arenaShot();
         if(leftShot) watchArena();
         dragAxis.set(-dy/length,-dx/length,0);
+        if(localOrbit.roll) dragAxis.applyAxisAngle(screenNormal,localOrbit.roll);
         storySpin.setFromAxisAngle(dragAxis,Math.min(Math.PI,length*.006));
         storyGoal.multiply(storySpin).normalize();
         return leftShot;
@@ -9341,7 +9349,7 @@ const Cosmos=(()=>{
 
     function moveOrbit(orbit,goal,ease) {
       let changing=false;
-      const fields=orbit===localOrbit ? ['yaw','elevation','zoom','shot'] : ['yaw','elevation','zoom'];
+      const fields=orbit===localOrbit ? ['yaw','elevation','zoom','shot','roll'] : ['yaw','elevation','zoom'];
       for(const key of fields) {
         orbit[key]=lerp(orbit[key],goal[key],ease);
         if(Math.abs(orbit[key]-goal[key])>.001) changing=true;
@@ -9562,6 +9570,9 @@ const Cosmos=(()=>{
         camera.up.copy(up);
         if(focused.story) camera.up.applyQuaternion(storyView);
         look.addScaledVector(camera.up,-lookLower*focused.root.scale.x*(1-(atlasFrame?.amount ?? 0)));
+        if(localOrbit.roll) {
+          camera.up.applyAxisAngle(relative.copy(camera.position).sub(look).normalize(),localOrbit.roll);
+        }
         if(demoShot>0) frameDemoFeature(focused,demoShot*(1-(atlasFrame?.amount ?? 0)));
       } else {
         moving=moveOrbit(mapOrbit,mapTarget,still?1:1-Math.exp(-17*time));
@@ -9719,6 +9730,7 @@ const Cosmos=(()=>{
 (() => {
   const surface = document.querySelector('#world');
   const planet = document.querySelector('.planet');
+  const themeColor = document.querySelector('meta[name="theme-color"]');
   const error = document.querySelector('.error');
   const overview = document.querySelector('#overview');
   const closer = document.querySelector('#closer');
@@ -9830,6 +9842,7 @@ const Cosmos=(()=>{
   const direction = new THREE.Vector3();
   const vertical = new THREE.Vector3();
   const axis = new THREE.Vector3();
+  const screenNormal = new THREE.Vector3(0,0,1);
   const spin = new THREE.Quaternion();
   const shotView = new THREE.Quaternion();
   const demoSites = {
@@ -9841,12 +9854,14 @@ const Cosmos=(()=>{
   const demoInterval=90, demoTravel=4, demoHold=15;
   const velocity = new THREE.Vector2();
   const pointers = new Map();
+  let pinch = null;
   const frameInterval = 1000 / 30;
   const ambientFrameInterval = 1000 / 15;
   const activityTail = 600;
   const pixelBudget = 1650000;
   let zoom = 0;
   let zoomTarget = 0;
+  let viewRoll = 0;
   let overviewDistance = 18.85;
   let lastMove = 0;
   let ambientTime = 0;
@@ -9877,7 +9892,7 @@ const Cosmos=(()=>{
   let demoTime = 0;
   let demoShot = 0;
   let demoShotHeld = false;
-  const touchHintKey = 'atlas-touch-hint';
+  const touchHintKey = 'atlas-touch-hint-v2';
   let touchHintTimer = null;
   let touchHintSeen = false;
   try { touchHintSeen=localStorage.getItem(touchHintKey)==='seen'; } catch {}
@@ -10103,9 +10118,7 @@ const Cosmos=(()=>{
     frame = null;
     lastFrameTime = null;
     responsiveUntil = 0;
-    velocity.set(0, 0);
-    pointers.clear();
-    surface.classList.remove('dragging');
+    clearCameraMotion();
     cosmos.wake();
   }
 
@@ -10125,10 +10138,16 @@ const Cosmos=(()=>{
     stars.append(items);
   }
 
+  function syncBrowserBackground() {
+    const color = getComputedStyle(planet).getPropertyValue('--browser-background').trim() || '#172033';
+    document.documentElement.style.backgroundColor = color;
+    themeColor.content = color;
+  }
+
   function setTime(mode, updateUrl = false) {
     nightTarget = mode === 'night' ? 1 : 0;
     planet.dataset.time = mode;
-    document.querySelector('meta[name="theme-color"]').content = coverOpen ? '#172033' : nightTarget ? '#10162f' : '#b3dfd2';
+    syncBrowserBackground();
     for (const button of timeControls) button.setAttribute('aria-pressed', String(button.dataset.time === mode));
     if (updateUrl && location.protocol !== 'file:') {
       const address = new URL(location.href);
@@ -10178,7 +10197,7 @@ const Cosmos=(()=>{
     measureAtlasFrame(width,height);
     overviewDistance = Math.max(18.85, 16.15 / camera.aspect);
     camera.updateProjectionMatrix();
-    const ratio = Math.min(devicePixelRatio, compact?1:1.25, Math.sqrt(pixelBudget / (renderWidth * renderHeight)));
+    const ratio = Math.min(devicePixelRatio, 1.25, Math.sqrt(pixelBudget / (renderWidth * renderHeight)));
     renderer.setDrawingBufferSize(renderWidth, renderHeight, ratio);
     requestRender();
   }
@@ -10211,6 +10230,7 @@ const Cosmos=(()=>{
     planet.dataset.space = onMap?'atlas':'local';
     planet.dataset.flying = String(moving);
     planet.dataset.mapView = String(browsing);
+    syncBrowserBackground();
     syncZoomControls();
     atlasToggle.hidden=!standalone && !browsing;
     if(!standalone && !browsing) setAtlasOpen(false);
@@ -10223,7 +10243,7 @@ const Cosmos=(()=>{
       button.textContent=arena===id?'Whole world':label;
     }
     timeControls[0].parentElement.hidden=!standalone && onMap;
-    guide.textContent=standalone && compactAtlas.matches && !coverOpen ? 'Swipe to rotate · Pinch to zoom'
+    guide.textContent=standalone && compactAtlas.matches && !coverOpen ? 'Drag or twist to rotate · Pinch to zoom'
       : onMap && !cosmos.isClose() ? 'Drag to look around'
       : !standalone && (fromSpace || onMap) ? 'Drag to rotate · Zoom out to return to the map' : 'Drag to rotate';
     for (const button of layoutControls) button.setAttribute('aria-pressed', String(button.dataset.layoutChoice === layout));
@@ -10259,6 +10279,7 @@ const Cosmos=(()=>{
       return;
     }
     viewTarget.copy(defaultView);
+    viewRoll = 0;
     velocity.set(0,0);
     selectPlace(null);
     setZoom(0);
@@ -10305,6 +10326,7 @@ const Cosmos=(()=>{
     defaultView.copy(lookFrom(lon,lat));
     view.copy(defaultView);
     viewTarget.copy(defaultView);
+    viewRoll = 0;
     zoom = 0;
     velocity.set(0,0);
     showDetailed(active);
@@ -10344,6 +10366,7 @@ const Cosmos=(()=>{
   function clearCameraMotion() {
     velocity.set(0,0);
     pointers.clear();
+    pinch = null;
     surface.classList.remove('dragging');
   }
 
@@ -10426,26 +10449,50 @@ const Cosmos=(()=>{
     return Math.sin(progress*Math.PI)*3.4;
   }
 
-  function orbit(dx, dy) {
+  function orbit(dx, dy, roll = 0) {
     if(layout==='cosmos') {
       if(coverOpen && !coverManual) {
         coverManual=true;
         clearCoverTransition();
       }
-      if(cosmos.orbit(dx,dy)) syncLabels();
+      if(cosmos.orbit(dx,dy,roll)) syncLabels();
+      return;
+    }
+    if (roll) {
+      viewRoll += roll;
       return;
     }
     const length = Math.hypot(dx, dy);
     if (!length) return;
     axis.set(-dy / length, -dx / length, 0);
+    if (viewRoll) axis.applyAxisAngle(screenNormal,viewRoll);
     spin.setFromAxisAngle(axis, Math.min(length * .006, Math.PI));
     view.multiply(spin).normalize();
     viewTarget.copy(view);
   }
 
-  function pinchDistance() {
+  function readPinch() {
     const [one, two] = pointers.values();
-    return Math.hypot(one.x - two.x, one.y - two.y);
+    return {x:two.x-one.x,y:two.y-one.y,twist:one.touch && two.touch};
+  }
+
+  function updatePinch() {
+    if (!pinch || pointers.size !== 2 || flight || (layout==='cosmos' && cosmos.flying())) return;
+    const previous = pinch;
+    pinch = readPinch();
+    const before = Math.hypot(previous.x,previous.y);
+    const after = Math.hypot(pinch.x,pinch.y);
+    if (pinch.twist && before > 18 && after > 18) {
+      // Compare the two finger positions together so event order doesn't affect the gesture.
+      const cross = previous.x*pinch.y - previous.y*pinch.x;
+      const dot = previous.x*pinch.x + previous.y*pinch.y;
+      const rotation = Math.atan2(cross,dot);
+      if (rotation) orbit(0,0,rotation);
+    }
+    if (before > 5 && after > 5) {
+      const adjustment = Math.log(after/before) * .55;
+      if (Math.abs(adjustment) > .0001) applyZoom(adjustment);
+    }
   }
 
   function pointerDown(event) {
@@ -10459,7 +10506,8 @@ const Cosmos=(()=>{
     }
     const receiver = event.target.closest('[data-cosmic-target]') || surface;
     receiver.setPointerCapture(event.pointerId);
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, touch: event.pointerType==='touch' });
+    if (pointers.size === 2) pinch = readPinch();
     velocity.set(0,0);
     viewTarget.copy(view);
     lastMove = event.timeStamp;
@@ -10472,7 +10520,6 @@ const Cosmos=(()=>{
     const previous = pointers.get(event.pointerId);
     if (!previous) return;
     const isPinch = pointers.size === 2;
-    const before = isPinch ? pinchDistance() : 0;
     const dx = event.clientX - previous.x;
     const dy = event.clientY - previous.y;
     if (!dx && !dy) return;
@@ -10489,21 +10536,20 @@ const Cosmos=(()=>{
     }
     if(!coverOpen) setDemoPlaying(false,true);
     selectPlace(null);
-    if (isPinch) {
-      const after = pinchDistance();
-      if (before > 5 && after > 5) applyZoom(Math.log(after / before) * .55);
-    } else {
+    if (!isPinch) {
       const elapsed = Math.max(8, event.timeStamp - lastMove) / 1000;
       orbit(dx,dy);
       velocity.set(dx / elapsed, dy / elapsed).clampLength(0, 1000);
-      requestRender(true);
     }
+    requestRender(true);
     lastMove = event.timeStamp;
   }
 
   function pointerEnd(event) {
     if (!pointers.has(event.pointerId)) return;
     if(event.type==='lostpointercapture' && surface.hasPointerCapture(event.pointerId)) return;
+    if (pinch && event.type==='pointerup') updatePinch();
+    pinch = null;
     if (pointers.size > 1 || event.type !== 'pointerup' || event.timeStamp - lastMove > 85) velocity.set(0,0);
     pointers.delete(event.pointerId);
     if (!pointers.size) {
@@ -10873,6 +10919,7 @@ const Cosmos=(()=>{
       return;
     }
     lastFrameTime = now;
+    updatePinch();
     const atlasTarget=Number(standalone && !coverOpen && !compactAtlas.matches && atlasOpen && atlasFrame.width>0);
     atlasFrame.amount=blend(atlasFrame.amount,atlasTarget,reducedMotion.matches?1:1-Math.exp(-11*elapsed/1000));
     const framingAtlas=Math.abs(atlasFrame.amount-atlasTarget)>.002;
@@ -10904,7 +10951,11 @@ const Cosmos=(()=>{
       }
       if(coverOpen && planet.dataset.coverReady!=='true') planet.dataset.coverReady='true';
       const atmosphere=cosmos.atmosphere();
-      planet.dataset.destinationSky=atmosphere.name ?? '';
+      const skyName = atmosphere.name ?? '';
+      if (planet.dataset.destinationSky !== skyName) {
+        planet.dataset.destinationSky = skyName;
+        syncBrowserBackground();
+      }
       planet.style.setProperty('--arrival-alpha',atmosphere.opacity);
       if(atmosphere.name==='rose') planet.style.setProperty('--sunset',atmosphere.sunset);
       if(landed) {
@@ -10968,6 +11019,9 @@ const Cosmos=(()=>{
     center.copy(direction).multiplyScalar(3.7 * closeZoom ** 1.8).addScaledVector(vertical,
       (mobile?.55:1.68)*closeZoom**1.65-(standalone?1.32*(1-closeZoom):0)).lerp(feature.focus,shot).multiplyScalar(1-atlasFrame.amount);
     surfaceLook.copy(center).add(worldCenter);
+    if(viewRoll) {
+      camera.up.applyAxisAngle(axis.copy(camera.position).sub(surfaceLook).normalize(),viewRoll);
+    }
     camera.lookAt(surfaceLook);
     Cosmos.frameForAtlas(camera,atlasFrame);
     if (layout === 'planets' && !flight && !fromSpace) atlas.layoutSatellites(camera,active,destinations,zoomTarget > .39);
