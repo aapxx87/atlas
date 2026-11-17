@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#172033">
+  <title>An Atlas of Almost Anywhere</title>
+  <link rel="stylesheet" href="./style.css?v=d76e51d4c904">
+  <script defer src="./vendor/three.min.js?v=170c6789f432"></script>
+  <script defer src="./atlas-runtime.js?v=a2384cdb6264"></script>
+</head>
+<body>
+  <svg class="contact-icons" width="0" height="0" aria-hidden="true">
+    <symbol id="contact-email" viewBox="0 0 24 24">
+      <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="5.5" width="18" height="13" rx="2.5"/>
+        <path d="m4 7 8 6 8-6"/>
+      </g>
+    </symbol>
+    <symbol id="contact-telegram" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M21 3.6 2.9 10.5a.7.7 0 0 0 .1 1.3l4.5 1.4 1.8 5.4c.1.4.6.5.9.2l2.6-2.4 4.8 3.6c.4.3 1 .1 1.1-.4l3.3-15.3c.1-.5-.5-.9-1-.7ZM9.8 16.8l-1.1-3.6 9-5.6c.2-.1.4.1.2.3l-7.8 6.7-.3 2.2Z"/>
+    </symbol>
+  </svg>
+  <main class="planet" data-layout="cosmos" data-region="cosmos" data-space="atlas" data-world-gallery="true" data-atlas-cover="true" data-destination-sky="duel">
+    <div class="sky" aria-hidden="true">
+      <i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="region-sky shore-sky" aria-hidden="true"></div>
+    <div class="region-sky pond-sky" aria-hidden="true"></div>
+    <div class="region-sky clover-sky" aria-hidden="true"></div>
+    <div class="night-sky" aria-hidden="true">
+      <div class="stars"></div>
+      <div class="moon"></div>
+    </div>
+    <div class="space-sky" aria-hidden="true"><div class="space-stars stars"></div></div>
+    <div class="destination-sky" aria-hidden="true"><div class="rose-dusk"><span></span></div></div>
+    <header class="cover-heading">
+      <h1>
+        <span class="cover-prefix"><span class="atlas-symbol" aria-hidden="true"></span>An Atlas of</span>
+        <span class="cover-name">Almost Anywhere</span>
+      </h1>
+    </header>
+    <nav class="atlas-navigation" aria-label="Atlas navigation">
+      <button type="button" id="atlas-home" class="atlas-wordmark" aria-label="Atlas home">
+        <span class="atlas-symbol" aria-hidden="true"></span><span>Atlas</span>
+      </button>
+      <button type="button" id="atlas-demo" class="atlas-demo" aria-label="Demo mode" aria-pressed="false"></button>
+    </nav>
+    <header class="title"><h1><span id="title-first">Frost Grove</span><br> <span id="title-last"></span></h1></header>
+    <div id="world" aria-label="Interactive world" aria-describedby="orbit-help" tabindex="0"></div>
+    <div class="cover-actions">
+      <p>Explore living miniature worlds inspired by stories, real places, and the imagination.</p>
+      <button type="button" id="enter-atlas" class="cover-enter" aria-controls="world-atlas">
+        Open the Atlas <span aria-hidden="true">→</span>
+      </button>
+    </div>
+    <nav class="layout-controls" aria-label="View mode">
+      <button type="button" data-layout-choice="cosmos" aria-pressed="true">Space</button>
+      <button type="button" data-layout-choice="one" aria-pressed="false">One World</button>
+      <button type="button" data-layout-choice="planets" aria-pressed="false">Four Worlds</button>
+    </nav>
+    <div class="time-controls" role="group" aria-label="Time of day">
+      <button type="button" data-time="day" aria-label="Day" aria-pressed="true"><span class="time-sun" aria-hidden="true"></span></button>
+      <button type="button" data-time="night" aria-label="Night" aria-pressed="false"><span class="time-moon" aria-hidden="true"></span></button>
+    </div>
+    <div class="guide" id="orbit-help"><span aria-hidden="true">↝</span> <span>Drag to rotate</span></div>
+    <nav class="places" aria-label="Places on this world">
+      <button type="button" data-place="meadow" aria-pressed="false"><span class="place-dot meadow"></span>Meadow</button>
+      <button type="button" data-place="shore" aria-pressed="false"><span class="place-dot shore"></span>Golden Coast</button>
+      <button type="button" data-place="pond" aria-pressed="false"><span class="place-dot pond"></span>Lily Pond</button>
+    </nav>
+    <nav class="satellites" aria-label="Nearby worlds">
+      <button type="button" data-destination="meadow" hidden><span>Meadow</span></button>
+      <button type="button" data-destination="shore" hidden><span>Golden Coast</span></button>
+      <button type="button" data-destination="pond" hidden><span>Lily Pond</span></button>
+      <button type="button" data-destination="clover" hidden><span>Clover Valley</span></button>
+    </nav>
+    <nav class="cosmic-links" aria-label="Travel destinations"></nav>
+    <button type="button" id="open-world-atlas" class="world-atlas-toggle" aria-expanded="false" aria-controls="world-atlas" hidden>
+      <span class="atlas-symbol" aria-hidden="true"></span>World Atlas<span class="world-atlas-chevron" aria-hidden="true"></span>
+    </button>
+    <section class="world-atlas" id="world-atlas" aria-labelledby="world-atlas-title" aria-hidden="true" inert>
+      <header class="world-atlas-heading">
+        <h2 id="world-atlas-title">World Atlas</h2>
+      </header>
+      <nav class="world-atlas-worlds" aria-label="Worlds"></nav>
+      <div class="world-atlas-preview" aria-hidden="true">
+        <canvas width="192" height="192"></canvas>
+      </div>
+    </section>
+    <button class="space-back" type="button" hidden>Back to map</button>
+    <div class="arena-actions">
+      <button id="watch-duel" type="button" hidden>Watch the duel</button>
+      <button id="watch-yoda" type="button" hidden>Find Yoda</button>
+      <button id="watch-penguins" type="button" hidden>Visit the penguins</button>
+      <button id="watch-valley" type="button" hidden>Explore the valley</button>
+    </div>
+    <div class="visit" hidden>
+      <button type="button" id="visit">Visit the cottage</button>
+      <button type="button" data-stop="0" hidden></button>
+      <button type="button" data-stop="1" hidden></button>
+      <button type="button" data-stop="2" hidden></button>
+      <button type="button" data-stop="3" hidden></button>
+      <button type="button" data-stop="4" hidden></button>
+      <button type="button" data-stop="5" hidden></button>
+    </div>
+    <div class="activity" hidden><button type="button" id="activity">Water the flowers</button></div>
+    <p class="status" role="status" aria-live="polite"></p>
+    <div class="view-controls" role="group" aria-label="View controls">
+      <button type="button" id="overview" aria-label="Reset view">⊙</button>
+      <div class="zoom">
+        <button type="button" id="closer" aria-label="Zoom in">+</button>
+        <button type="button" id="farther" aria-label="Zoom out">−</button>
+      </div>
+    </div>
+    <nav class="contact-links" aria-label="Contact">
+      <a href="mailto:aapspb1987@gmail.com" aria-label="Email aapspb1987@gmail.com"><svg aria-hidden="true"><use href="#contact-email"/></svg></a>
+      <a href="https://t.me/AntPD" target="_blank" rel="noopener noreferrer" aria-label="Telegram @AntPD"><svg aria-hidden="true"><use href="#contact-telegram"/></svg></a>
+    </nav>
+    <p class="error" role="status" hidden>The 3D scene couldn’t load. Try opening this page in Chrome or Safari with WebGL enabled.</p>
+  </main>
+</body>
+</html>
