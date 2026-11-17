@@ -42,7 +42,10 @@ const Land = (() => {
     for (const pool of pools) {
       const x = wrap(lon - pool.lon) / pool.x;
       const y = (lat - pool.lat) / pool.y;
-      const shape = Math.hypot(x, y) - 1 + .11 * Math.sin(Math.atan2(y, x) * 3 + .35) + .06 * Math.cos(Math.atan2(y, x) * 5);
+      // The shoreline ripples move the edge by at most .17.
+      if ((Math.max(Math.abs(x), Math.abs(y)) - 1.18) * pool.y > margin) continue;
+      const angle = Math.atan2(y, x);
+      const shape = Math.hypot(x, y) - 1 + .11 * Math.sin(angle * 3 + .35) + .06 * Math.cos(angle * 5);
       margin = Math.min(margin, shape * pool.y);
     }
     return margin;
@@ -56,14 +59,13 @@ const Land = (() => {
       + Math.cos(z * 4 - y * 3) * Math.sin(x * 5 + y * 7) * .075;
   }
 
-  function altitude(lon, lat, normal = direction(lon, lat)) {
-    const shore = surface(lon, lat);
-    return mix(-.14, .115 + hills(normal), smooth(-.045, .089, shore)) + .026 * smooth(.08, .27, shore);
+  function terrainHeight(shore, relief) {
+    return mix(-.14, .115 + relief, smooth(-.045, .089, shore)) + .026 * smooth(.08, .27, shore);
   }
 
   function point(lon, lat, offset = 0) {
     const normal = direction(lon, lat);
-    return normal.multiplyScalar(radius + altitude(lon, lat, normal) + offset);
+    return normal.multiplyScalar(radius + terrainHeight(surface(lon, lat), hills(normal)) + offset);
   }
 
   function frame(lon, lat, offset = 0) {
@@ -81,20 +83,31 @@ const Land = (() => {
     [[.18,-.24],[.06,-.33],[-.14,-.48],[-.38,-.53],[-.62,-.52],[-.79,-.59]],
     [[.18,-.24],[.34,-.32],[.42,-.44],[.56,-.56],[.78,-.62]]
   ];
+  const segments = trails.flatMap(trail => trail.slice(1).map(([endLon, endLat], index) => {
+    const [lon, lat] = trail[index];
+    const dx = endLon - lon, dy = endLat - lat;
+    return { lon, lat, dx, dy, lengthSquared: dx * dx + dy * dy };
+  }));
+  const trackEdge = .047;
+  const trackRipple = .006;
+  const trackMargin = trackEdge + trackRipple;
+  const trailPoints = trails.flat();
+  const trailLons = trailPoints.map(([lon]) => lon);
+  const trailLats = trailPoints.map(([, lat]) => lat);
+  const trailBounds = {
+    west: Math.min(...trailLons) - trackMargin, east: Math.max(...trailLons) + trackMargin,
+    south: Math.min(...trailLats) - trackMargin, north: Math.max(...trailLats) + trackMargin
+  };
 
   function trailDist(lon, lat) {
-    let distance = Infinity;
-    for (const trail of trails) {
-      for (let i = 1; i < trail.length; i++) {
-        const [a, b] = trail[i - 1];
-        const [c, d] = trail[i];
-        const x = wrap(lon - a), y = lat - b;
-        const dx = c - a, dy = d - b;
-        const t = clamp((x * dx + y * dy) / (dx * dx + dy * dy), 0, 1);
-        distance = Math.min(distance, Math.hypot(x - dx * t, y - dy * t));
-      }
+    let nearestSquared = Infinity;
+    for (const segment of segments) {
+      const x = wrap(lon - segment.lon), y = lat - segment.lat;
+      const t = clamp((x * segment.dx + y * segment.dy) / segment.lengthSquared, 0, 1);
+      const across = x - segment.dx * t, along = y - segment.dy * t;
+      nearestSquared = Math.min(nearestSquared, across * across + along * along);
     }
-    return distance;
+    return Math.sqrt(nearestSquared);
   }
 
   function globeGeometry(slices, bands, paint) {
@@ -142,12 +155,15 @@ const Land = (() => {
       const grass = .5 + .19 * Math.sin(x * 19 + y * 9 - z * 4) * Math.cos(z * 20 + y * 13)
         + .13 * Math.sin(x * 31 + y * 43 + z * 5) + .17 * Math.cos(x * 7 - y * 9 + z * 17);
       const shore = surface(lon, lat);
+      const relief = hills(normal);
       const color = palette[0].clone().lerp(palette[1], clamp(grass, .04, .97));
-      color.lerp(palette[2], smooth(.08, .25, hills(normal) + .08) * .63);
+      color.lerp(palette[2], smooth(.08, .25, relief + .08) * .63);
       color.lerp(palette[4], (1 - smooth(.015, .083, shore)) * .8);
-      const track = trailDist(lon, lat) + .006 * Math.sin(lon * 69) * Math.cos(lat * 67);
-      color.lerp(palette[3], (1 - smooth(.019, .047, track)) * smooth(.016, .081, shore) * .89);
-      return { position: normal.multiplyScalar(radius + altitude(lon, lat, normal)), color };
+      if (lon >= trailBounds.west && lon <= trailBounds.east && lat >= trailBounds.south && lat <= trailBounds.north) {
+        const track = trailDist(lon, lat) + trackRipple * Math.sin(lon * 69) * Math.cos(lat * 67);
+        color.lerp(palette[3], (1 - smooth(.019, trackEdge, track)) * smooth(.016, .081, shore) * .89);
+      }
+      return { position: normal.multiplyScalar(radius + terrainHeight(shore, relief)), color };
     });
     const groundMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
     const expanded = { value: 0 };
@@ -4768,7 +4784,7 @@ const Atlas = (() => {
       getModel(name).trigger(seconds,place);
     }
 
-    return { bodies, get water(){return getModel('meadow').water;}, getMiniature, show, layoutSatellites, animate, act };
+    return { bodies, get water(){return getModel('meadow').water;}, getModel, getMiniature, show, layoutSatellites, animate, act };
   }
 
   return { create, regions };
@@ -8992,6 +9008,12 @@ const Cosmos=(()=>{
       }
     }
 
+    function prepareGalleryWorld(id,fit) {
+      const entry=map.get(id);
+      loadBody(entry);
+      if(fit) entry.coverRadius??=worldRadius(entry.root);
+    }
+
     const mapOrbit={yaw:0,elevation:initialElevation,zoom:0};
     const localOrbit={yaw:0,elevation:0,zoom:0,shot:0};
     const mapTarget={...mapOrbit}, localTarget={...localOrbit};
@@ -9684,7 +9706,7 @@ const Cosmos=(()=>{
       ctx.putImageData(image,0,0);
     }
 
-    return {resize,render,launch,focusWorld,preloadWorld,warmCoverWorld,showcaseWorld,renderShowcaseDeparture,finishShowcaseTransition,resetZoom,
+    return {resize,render,launch,focusWorld,preloadWorld,prepareGalleryWorld,warmCoverWorld,showcaseWorld,renderShowcaseDeparture,finishShowcaseTransition,resetZoom,
       resetFocused,back,fromSurface,orbit,scale,canZoomWorld,name,flying,isClose,cancel,atmosphere,hasAnimation,hasRapidMotion,needsFrame,wake,watchArena,arenaShot,drawThumbnail};
   }
 
@@ -9841,8 +9863,12 @@ const Cosmos=(()=>{
   let mapPress = false;
   let mapDragDistance = 0;
   let atlasOpen = false;
+  let atlasWarmTimer = null;
+  let atlasWarmIdle = null;
+  let atlasWarmLeft = 0;
   const atlasFrame = {width:0,height:0,shift:0,span:1,amount:0};
   const worldRadii = new WeakMap();
+  const preparedWorlds = new Set();
   let atlasExitTimer = null;
   let atlasPointerMode = false;
   let atlasPointerVisited = false;
@@ -9855,17 +9881,15 @@ const Cosmos=(()=>{
   let touchHintTimer = null;
   let touchHintSeen = false;
   try { touchHintSeen=localStorage.getItem(touchHintKey)==='seen'; } catch {}
-  let previewFrame = null;
   let previewDelay = null;
   let previewButton = null;
   let hoverFrameTimer = null;
   let hoverStarted = null;
-  const pendingPreviews = new Map();
   const surfaceLook = new THREE.Vector3();
   const transitLightView = new THREE.Quaternion();
   const flightDuration = 1560;
 
-  for(const {id,title,tint} of Cosmos.worlds) {
+  for(const [index,{id,title,tint}] of Cosmos.worlds.entries()) {
     const button=document.createElement('button');
     button.type='button';
     button.dataset.atlasWorld=id;
@@ -9873,9 +9897,7 @@ const Cosmos=(()=>{
     const picture=document.createElement('span');
     picture.className='world-atlas-picture';
     picture.setAttribute('aria-hidden','true');
-    const canvas=document.createElement('canvas');
-    canvas.width=canvas.height=128;
-    picture.append(canvas);
+    picture.style.setProperty('--world-thumbnail-position',`${100*index/(Cosmos.worlds.length-1)}%`);
     const label=document.createElement('span');
     label.textContent=title;
     button.append(picture,label);
@@ -9893,20 +9915,48 @@ const Cosmos=(()=>{
     });
     button.addEventListener('click',()=>standalone?selectWorld(id):goFromMap(id));
     atlasWorlds.append(button);
-    pendingPreviews.set(id,canvas);
   }
 
-  function queueAtlasPreviews() {
-    if(!atlasOpen || contextLost || document.hidden || previewDelay!==null || previewFrame!==null || !pendingPreviews.size) return;
-    previewFrame=requestAnimationFrame(()=>{
-      previewFrame=null;
-      if(!atlasOpen || contextLost || document.hidden) return;
-      const [id,canvas]=pendingPreviews.entries().next().value;
-      cosmos.drawThumbnail(renderer,id,canvas);
-      canvas.parentElement.dataset.ready='true';
-      pendingPreviews.delete(id);
-      queueAtlasPreviews();
+  function cancelAtlasWarmup() {
+    clearTimeout(atlasWarmTimer);
+    atlasWarmTimer=null;
+    if(atlasWarmIdle!==null) cancelIdleCallback(atlasWarmIdle);
+    atlasWarmIdle=null;
+  }
+
+  function queueAtlasWarmup() {
+    cancelAtlasWarmup();
+    if(!standalone || !atlasOpen || !atlasWarmLeft || contextLost || document.hidden) return;
+    atlasWarmTimer=setTimeout(()=>{
+      atlasWarmTimer=null;
+      if(typeof requestIdleCallback==='function') atlasWarmIdle=requestIdleCallback(prepareVisibleAtlasWorld);
+      else prepareVisibleAtlasWorld();
+    },420);
+  }
+
+  function prepareVisibleAtlasWorld(deadline) {
+    atlasWarmIdle=null;
+    if(!atlasOpen || contextLost || document.hidden) return;
+    if(deadline && deadline.timeRemaining()<8) {
+      queueAtlasWarmup();
+      return;
+    }
+    const strip=atlasWorlds.getBoundingClientRect();
+    const card=Array.from(atlasWorlds.children).find(button=>{
+      if(preparedWorlds.has(button.dataset.atlasWorld)) return false;
+      const {left,right,width}=button.getBoundingClientRect();
+      return Math.min(strip.right,right)-Math.max(strip.left,left)>width*.5;
     });
+    if(!card) return;
+    const id=card.dataset.atlasWorld;
+    if(atlas.bodies.has(id)) {
+      atlas.getModel(id);
+      const {root}=atlas.bodies.get(id);
+      if(!compactAtlas.matches) worldRadii.set(root,Cosmos.worldRadius(root));
+    } else cosmos.prepareGalleryWorld(id,!compactAtlas.matches);
+    preparedWorlds.add(id);
+    atlasWarmLeft--;
+    queueAtlasWarmup();
   }
 
   function positionAtlasPreview() {
@@ -10003,15 +10053,16 @@ const Cosmos=(()=>{
       const current=layout==='cosmos' ? cosmos.atmosphere().name : active;
       const currentCard=markAtlasWorld(current);
       if(focusPanel) (currentCard ?? atlasWorlds.firstElementChild).focus({preventScroll:true});
-      if(reducedMotion.matches) queueAtlasPreviews();
-      else previewDelay=setTimeout(()=>{
+      atlasWarmLeft=2;
+      queueAtlasWarmup();
+      if(!reducedMotion.matches && !compactAtlas.matches) previewDelay=setTimeout(()=>{
         previewDelay=null;
-        queueAtlasPreviews();
         if(previewButton && hoverFrameTimer===null) drawAtlasPreview();
       },590);
     } else {
       atlasPointerMode=false;
       atlasPointerVisited=false;
+      cancelAtlasWarmup();
       setAtlasPreview(null);
       if(previewDelay!==null) {
         clearTimeout(previewDelay);
@@ -10045,6 +10096,7 @@ const Cosmos=(()=>{
   }
 
   function pauseScene() {
+    cancelAtlasWarmup();
     setAtlasPreview(null);
     cancelAmbientFrame();
     if (frame !== null) cancelAnimationFrame(frame);
@@ -10296,6 +10348,8 @@ const Cosmos=(()=>{
   }
 
   function selectWorld(id,startup=false) {
+    preparedWorlds.add(id);
+    queueAtlasWarmup();
     clearCameraMotion();
     worldOrbitTime=standalone && !coverOpen?0:null;
     demoTime=demoShot=0;
@@ -10582,6 +10636,9 @@ const Cosmos=(()=>{
     if(isAtlasPointer(event)) atlasPointerVisited=true;
     setAtlasOpen(true,false,event.detail===0);
   });
+  atlasWorlds.addEventListener('scroll',queueAtlasWarmup,{passive:true});
+  atlasWorlds.addEventListener('pointerdown',cancelAtlasWarmup,{passive:true});
+  atlasWorlds.addEventListener('pointercancel',queueAtlasWarmup,{passive:true});
   planet.addEventListener('pointermove',event=>{
     if(!atlasOpen || !isAtlasPointer(event)) return;
     const {left,right}=worldAtlas.getBoundingClientRect();
@@ -10626,19 +10683,20 @@ const Cosmos=(()=>{
   renderer.domElement.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
     contextLost = true;
+    delete planet.dataset.coverReady;
     pauseScene();
     error.hidden = false;
   });
   renderer.domElement.addEventListener('webglcontextrestored', () => {
     error.hidden = true;
     contextLost = false;
-    queueAtlasPreviews();
+    queueAtlasWarmup();
     requestRender();
   });
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) pauseScene();
     else {
-      queueAtlasPreviews();
+      queueAtlasWarmup();
       requestRender();
     }
   });
@@ -10844,6 +10902,7 @@ const Cosmos=(()=>{
       } finally {
         if(transition) renderer.autoClear=autoClear;
       }
+      if(coverOpen && planet.dataset.coverReady!=='true') planet.dataset.coverReady='true';
       const atmosphere=cosmos.atmosphere();
       planet.dataset.destinationSky=atmosphere.name ?? '';
       planet.style.setProperty('--arrival-alpha',atmosphere.opacity);

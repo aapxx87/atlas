@@ -2,7 +2,7 @@
   color-scheme: light;
   font: 15px "Instrument Sans", "Avenir Next", system-ui, sans-serif;
   color: #193f36;
-  background: #b4ded2;
+  background: #172033;
 }
 *, *::before, *::after { box-sizing: border-box; }
 body { margin: 0; overflow: hidden; }
@@ -494,19 +494,14 @@ button:focus-visible, #world:focus-visible { outline: 2px solid var(--focus); }
   position: relative;
 }
 .world-atlas-picture {
-  position: relative;
-  width: 80px;
-  height: 76px;
-  background: radial-gradient(ellipse at 50% 49%, color-mix(in srgb, var(--world-tint) 27%, transparent), transparent 69%);
+  width: 76px;
+  aspect-ratio: 1;
+  background-image: url("./world-atlas-cards.webp?v=33e49bae33b2"),
+    radial-gradient(ellipse at 50% 49%, color-mix(in srgb, var(--world-tint) 27%, transparent), transparent 69%);
+  background-size: 1000% 100%, auto;
+  background-position: var(--world-thumbnail-position) center, center;
+  background-repeat: no-repeat;
 }
-.world-atlas-picture:not([data-ready])::before {
-  position: absolute;
-  inset: 21px 24px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 30% 30%, color-mix(in srgb, #fff 55%, var(--world-tint)), var(--world-tint) 57%, #27314f);
-  content: "";
-}
-.world-atlas-picture canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
 .world-atlas-preview {
   position: absolute;
   left: var(--preview-x, 50%);
@@ -1021,7 +1016,8 @@ button:focus-visible, #world:focus-visible { outline: 2px solid var(--focus); }
 .planet[data-atlas-cover="true"] :is(.title, .time-controls, .view-controls, .world-atlas-toggle) {
   display: none;
 }
-.planet[data-atlas-cover="true"] .destination-sky {
+.planet[data-atlas-cover="true"][data-layout="cosmos"] .destination-sky {
+  opacity: 1;
   background:
     radial-gradient(ellipse at var(--cover-glow-x) 36%, #668eb657, transparent 56%),
     radial-gradient(ellipse at 58% 77%, #8c445450, transparent 55%),
@@ -1077,6 +1073,17 @@ button:focus-visible, #world:focus-visible { outline: 2px solid var(--focus); }
   outline-offset: 3px;
   border-radius: 18px;
 }
+.cover-poster { display: none; }
+.planet[data-atlas-cover="true"] .cover-poster {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+.planet[data-cover-ready="true"] .cover-poster { visibility: hidden; }
 .planet[data-atlas-cover="true"] #world > canvas {
   position: fixed;
   inset: 0;

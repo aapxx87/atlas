@@ -5,9 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#172033">
   <title>An Atlas of Almost Anywhere</title>
-  <link rel="stylesheet" href="./style.css?v=d76e51d4c904">
+  <style>html { background: #172033; }</style>
+  <link rel="preload" as="image" href="./frost-grove-cover.webp?v=c8e3881a7d51" fetchpriority="high">
+  <link rel="preload" as="image" href="./world-atlas-cards.webp?v=33e49bae33b2" fetchpriority="low">
+  <link rel="stylesheet" href="./style.css?v=4ee636a2351b">
   <script defer src="./vendor/three.min.js?v=170c6789f432"></script>
-  <script defer src="./atlas-runtime.js?v=a2384cdb6264"></script>
+  <script defer src="./atlas-runtime.js?v=72e86b4faf42"></script>
 </head>
 <body>
   <svg class="contact-icons" width="0" height="0" aria-hidden="true">
@@ -47,7 +50,9 @@
       <button type="button" id="atlas-demo" class="atlas-demo" aria-label="Demo mode" aria-pressed="false"></button>
     </nav>
     <header class="title"><h1><span id="title-first">Frost Grove</span><br> <span id="title-last"></span></h1></header>
-    <div id="world" aria-label="Interactive world" aria-describedby="orbit-help" tabindex="0"></div>
+    <div id="world" aria-label="Interactive world" aria-describedby="orbit-help" tabindex="0">
+      <img class="cover-poster" src="./frost-grove-cover.webp?v=c8e3881a7d51" width="768" height="768" alt="" fetchpriority="high" decoding="async">
+    </div>
     <div class="cover-actions">
       <p>Explore living miniature worlds inspired by stories, real places, and the imagination.</p>
       <button type="button" id="enter-atlas" class="cover-enter" aria-controls="world-atlas">
