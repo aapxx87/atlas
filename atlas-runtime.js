@@ -8050,6 +8050,511 @@ const DuelWorld=(()=>{
 })();
 
 ;
+// The second expedition on Spore Moon, on the open northern cap.
+const SporeDuel=(()=>{
+  const {Group,Vector3,Quaternion,Color}=THREE;
+  const {model}=Scenery, {clamp,lerp,smoothstep}=THREE.MathUtils;
+  const up=new Vector3(0,1,0), tau=Math.PI*2, period=180;
+  // Each vignette changes the crossing angle, pace and sequence of replies.
+  // Times are impacts, relative to the start of that vignette.
+  const score=[
+    [14,.22,.12, [[.85,'ground'],[1.8,'ground'],[3,'ground'],[5,'shell'],[8,'leg'],[12,'ground']]],
+    [16,.59,.48, [[2,'ground'],[4,'knock'],[9,'shell'],[11.6,'bomb']]],
+    [11,.39,.72, [[1.7,'shell'],[3,'ground'],[4.2,'ground'],[7.2,'leg']]],
+    [18,.79,.98, [[2.1,'ground'],[4.8,'bomb'],[9.6,'shell'],[12,'knock'],[16.6,'ground']]],
+    [13,1.05,.82, [[1.3,'ground'],[2.5,'ground'],[5.2,'shell'],[8.8,'bomb']]],
+    [16,1.32,1.18, [[1.5,'shell'],[3.4,'leg'],[9.4,'ground'],[11.3,'knock']]],
+    [12,1.08,1.43, [[1.6,'ground'],[3.6,'shell'],[5,'bomb'],[10.3,'ground']]],
+    [17,1.50,1.72, [[2,'ground'],[4,'knock'],[9,'ground'],[11.7,'leg']]],
+    [14,1.84,1.54, [[1.4,'shell'],[3.5,'ground'],[4.7,'ground'],[9.2,'bomb']]],
+    [16,1.62,1.86, [[1.8,'ground'],[3.7,'shell'],[6.8,'leg'],[13.5,'ground']]],
+    [15,1.88,2.20, [[1.4,'ground'],[3.7,'knock'],[8.9,'shell'],[11.8,'bomb']]],
+    [18,2,2, [[1.7,'shell'],[4.4,'ground'],[6.1,'ground'],[8.2,'leg'],[14,'shell'],[16.1,'ground']]]
+  ];
+  const glow=color=>new THREE.MeshBasicMaterial({color,toneMapped:false});
+  function robot(parent) {
+    const root=new Group(), hull=new Group();
+    root.name='Сферический разведчик';parent.add(root);root.add(hull);
+    const metal='#40425a', plate='#50536a', trim='#303047';
+    model(hull,'round',metal,[0,0,0],[.47,.46,.455]);
+    for(const side of [-1,1]) {
+      model(hull,'box',plate,[side*.245,.375,-.04],[.084,.235,.103],[.13,0,-side*.41]);
+      model(hull,'box','#c5817d',[side*.277,.471,-.023],[.052,.052,.073],[.13,0,-side*.41]);
+      model(hull,'round',trim,[side*.437,-.04,-.008],[.049,.14,.16]);
+    }
+    const eye=new Group();eye.position.set(0,.018,.403);hull.add(eye);
+    model(eye,'round',trim,[0,0,0],[.207,.207,.085]);
+    model(eye,'ring','#a56f77',[0,0,.060],[.164,.164,.15]);
+    const iris=glow('#ff7958');
+    model(eye,'round',iris,[0,0,.066],[.143,.143,.053]);
+    model(eye,'round','#953f52',[0,0,.113],[.066,.066,.024]);
+    model(eye,'tiny',glow('#fff2c4'),[-.056,.059,.113],[.027,.038,.014]);
+    const barrel=new Group();barrel.position.z=.15;eye.add(barrel);
+    const shin=new THREE.ConeGeometry(1,1,5), legs=[];
+    for(const [i,[x,z]] of [[-.31,.25],[.31,.25],[-.31,-.25],[.31,-.25]].entries()) {
+      const socket=new Group();socket.position.set(x,-.23,z);hull.add(socket);
+      const upper=model(root,'stem',trim,[0,0,0],[1,1,1]);
+      const knee=model(root,'pebble',plate,[0,0,0],[.105,.113,.105]);
+      const lower=model(root,shin,metal,[0,0,0],[1,1,1]);
+      legs.push({x,z,socket,upper,knee,lower,phase:[0,.5,.54,.04][i]});
+    }
+    return {root,hull,barrel,iris,legs};
+  }
+
+  function explorer(parent) {
+    const base=new Group();parent.add(base);base.name='Второй космонавт';
+    const person=Inhabitants.resident(base,'visitor',1.20);
+    for(const child of person.head.children) child.visible=false;
+    model(person.head,'round','#e7e0cb',[0,.026,.012],[.151,.157,.148]);
+    model(person.head,'round','#305965',[0,.031,.128],[.120,.100,.060]);
+    model(person.head,'tiny','#95d6cd',[-.043,.075,.173],[.04,.014,.009],[0,0,.22]);
+    model(person.torso,'box','#bb805b',[0,.325,-.108],[.169,.202,.096]);
+    model(person.torso,'box','#559d9c',[0,.326,.095],[.148,.139,.032]);
+    const tool=new Group();person.hands[1].add(tool);
+    model(tool,'box','#455769',[0,.002,.093],[.068,.067,.22]);
+    model(tool,'box',glow('#8bf7fc'),[0,.003,.204],[.046,.039,.032]);
+    return {base,person,tool};
+  }
+
+  // A fractured outcrop: broad planar faces, a thin mineral bed and a chipped, sloping crown.
+  function outcrop(seed,tall) {
+    const rng=Land.rng(seed), vertices=[],colors=[];
+    const footprint=tall?[[-.96,-.39],[-.44,-.86],[.49,-.94],[.89,-.53],[.97,.30],[.42,.68],[-.10,.58],[-.48,.91],[-.86,.53]]:
+      [[-.81,-.55],[-.22,-.92],[.59,-.82],[1,-.19],[.81,.58],[.23,.94],[-.69,.72],[-1,.12]];
+    const ochre=tall?['#73515f','#91636b','#ae7976','#976b72','#af8080']:
+      ['#644c61','#826579','#ba8b8d','#917382','#af929b'];
+    const outline=footprint.map(([x,z])=>[x*(.90+.16*rng()),z*(.90+.16*rng()),rng()-.5]);
+    const rings=[[-.13,.81,0],[.20,1,0],[.46,.89,.02],[.51,.86,.03],[.81,.76,.09],[1,.52,.17]]
+      .map(([h,width,shift])=>outline.map(([x,z,j])=>new Vector3(x*width+shift*(tall?1.7:-.5),
+        h+(h>0?h*((tall?.36:-.21)*x-.20*z+j*.28):0),z*width*(tall?1-.38*h:1)-.42*shift)));
+    const face=(a,b,c,color,shade)=>{
+      const tint=new Color(color).multiplyScalar(shade);
+      for(const v of [a,b,c]) {vertices.push(v.x,v.y,v.z);colors.push(tint.r,tint.g,tint.b);}
+    };
+    for(let level=0;level<rings.length-1;level++) for(let i=0;i<outline.length;i++) {
+      const j=(i+1)%outline.length,lo=rings[level],hi=rings[level+1],shade=.87+rng()*.22;
+      face(lo[i],hi[i],hi[j],ochre[level],shade);
+      face(lo[i],hi[j],lo[j],ochre[level],shade*(.96+.06*rng()));
+    }
+    const cap=rings[rings.length-1],peak=new Vector3(tall?.45:-.27,tall?1.23:1.13,-.13);
+    for(let i=0;i<cap.length;i++) face(cap[i],peak,cap[(i+1)%cap.length],ochre[4],.98+rng()*.10);
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+    geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  function create(world,terrain,groundMesh,obstacles) {
+    const bot=robot(world), astro=explorer(world);
+    const events=[], chapters=[];
+    let start=0,previousBot=0,previousScout=0;
+    for(const [index,[length,endBot,endScout,hits]] of score.entries()) {
+      const cues=hits.map(([at,kind],i)=>({at:start+at,kind,id:events.length+i,leg:(events.length+i)%2,offset:at}));
+      // Keep all effect pools and trajectories seekable, including an automatic preview reload.
+      events.push(...cues);
+      chapters.push({start,length,index,endBot,endScout,previousBot,previousScout,cues});
+      previousBot=endBot;previousScout=endScout;start+=length;
+    }
+    const wrap=t=>THREE.MathUtils.euclideanModulo(t,period);
+    function chapterAt(t) {return chapters.find(c=>t<c.start+c.length) || chapters[0];}
+    const rocks=[], coverSites=[new Vector3(-.21,0,-1.01),new Vector3(-.06,0,1.01)];
+    const rockSkin=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.98,flatShading:true});
+    for(const [i,site] of coverSites.entries()) {
+      site.y=Math.sqrt(3.04**2-site.x**2-site.z**2);
+      const n=site.clone().normalize();
+      const base=terrain.place(world,Math.atan2(n.x,n.z),Math.asin(n.y));
+      base.name='Скальное укрытие '+(i+1);
+      base.position.copy(n).multiplyScalar(terrain.meshRadius(n));
+      const main=model(base,outcrop(915+i,i===1),rockSkin,[0,0,0],i?[.33,.69,.32]:[.44,.46,.31],[0,i?-.72:.37,0]);
+      const chip=model(base,outcrop(14+i,i===1),rockSkin,[i?.27:-.25,.003,.17],[.16,.16,.14],[0,1.8+i,0]);
+      base.updateWorldMatrix(true,true);
+      rocks.push(main,chip);
+    }
+    // Only selected volleys drive the explorer behind cover. The cover point
+    // follows the far side of the rock relative to the firing eye.
+    const shelters=new Map([[0,[0,1.25,3.15]],[2,[1,2.6,4.4]],[4,[1,1.2,2.6]],[11,[0,4.1,6.25]]]);
+    function shelter(c,elapsed) {
+      const cue=shelters.get(c.index);
+      return cue?smoothstep(elapsed,Math.max(0,cue[1]-2.25),cue[1])*(1-smoothstep(elapsed,cue[2],cue[2]+2.35)):0;
+    }
+    const coverAxes=coverSites.map(site=>site.clone().normalize());
+    const nearbyPlants=obstacles.filter(o=>o.axis.y>.3);
+    // Push toward the tangent pointing out of an obstacle, then return to the sphere.
+    function keepOutside(n,axis,angle) {
+      const dot=n.dot(axis);
+      if(dot>=Math.cos(angle)) {
+        n.addScaledVector(axis,-dot).normalize().multiplyScalar(Math.sin(angle)).addScaledVector(axis,Math.cos(angle));
+      }
+    }
+    function clearRoute(n,isBot) {
+      for(let pass=0;pass<3;pass++) {
+        for(const plant of nearbyPlants) keepOutside(n,plant.axis,plant.angle+(isBot?.72:.31)/3.04);
+        for(const axis of coverAxes) keepOutside(n,axis,(isBot?1.01:.69)/3.04);
+      }
+      return n;
+    }
+    const patrol=new Vector3();
+    function path(t,isBot,out) {
+      t=wrap(t);
+      const c=chapterAt(t), elapsed=t-c.start;
+      let moved=elapsed, movingSpan=c.length;
+      for(const e of c.cues) {
+        const hold=isBot?(e.kind==='leg'?3.7:e.kind==='bomb'?1.45:0):(e.kind==='knock'?2.8:0);
+        movingSpan-=hold;
+        moved-=clamp(elapsed-e.offset,0,hold);
+      }
+      const u=clamp(moved/movingSpan,0,1), ease=smoothstep(u,0,1), bow=Math.sin(Math.PI*u);
+      const turn=isBot?lerp(c.previousBot,c.endBot,ease):lerp(c.previousScout,c.endScout,ease)+.51;
+      const angle=tau*turn+.29;
+      if(isBot) {
+        // Two tangent loops. Each circuit takes the walker round opposite flanks of both outcrops.
+        const lobe=Math.sin(angle), z=Math.sign(lobe)*1.01*(1-Math.cos(2*angle));
+        out.set(-.135+.075*z/1.01+1.14*Math.sin(2*angle),0,z);
+      } else {
+        const flank=tau*lerp(c.previousBot,c.endBot,ease)+.29;
+        out.set(1.16+.12*Math.cos(angle),0,-1.30*Math.sin(flank+.72)+.13*Math.sin(angle)+.08*bow);
+      }
+      const hiding=isBot?0:shelter(c,elapsed);
+      if(hiding) {
+        const site=coverSites[shelters.get(c.index)[0]];
+        path(t,true,patrol).multiplyScalar(3.04);
+        const dx=site.x-patrol.x,dz=site.z-patrol.z,length=Math.hypot(dx,dz);
+        out.x=lerp(out.x,site.x+.66*dx/length,hiding);
+        out.z=lerp(out.z,site.z+.66*dz/length,hiding);
+      }
+      if(!isBot) {
+        // Keep the scout outside the rock footprint even during the transition into cover.
+        for(const site of coverSites) {
+          const dz=out.z-site.z;
+          if(Math.abs(dz)<.69) out.x=Math.max(out.x,site.x+Math.sqrt(.69**2-dz*dz));
+        }
+      }
+      out.y=Math.sqrt(3.04**2-out.x**2-out.z**2);
+      return clearRoute(out.normalize(),isBot);
+    }
+
+    const nBot=new Vector3(), nScout=new Vector3(), p=new Vector3(),q=new Vector3(),d=new Vector3();
+    const hip=new Vector3(), toe=new Vector3(), inv=new Quaternion(), travel=new Vector3(), before=new Vector3();
+    const local=(obj,v)=>world.worldToLocal(obj.localToWorld(v));
+    function onMoon(root,n,to) {
+      const lon=Math.atan2(n.x,n.z),lat=Math.asin(n.y);
+      terrain.put(root,lon,lat,0);
+      root.position.copy(n).multiplyScalar(terrain.meshRadius(n)+.012);
+      d.copy(to).applyQuaternion(inv.copy(root.quaternion).invert());
+      root.rotateY(Math.atan2(d.x,d.z));
+    }
+    function link(mesh,a,b,w,z=w) {
+      d.subVectors(b,a);
+      mesh.position.copy(a).addScaledVector(d,.5);
+      mesh.scale.set(w,d.length(),z);
+      mesh.quaternion.setFromUnitVectors(up,d.normalize());
+    }
+    function reaction(t,kind) {
+      let age=Infinity;
+      for(const e of chapterAt(t).cues) if(!e.blocked && e.kind===kind && t>=e.at) age=t-e.at;
+      return age;
+    }
+    function bump(age,duration) {return age<duration?Math.sin(Math.PI*age/duration):0;}
+    function down(age,end) {return smoothstep(age,0,.42)*(1-smoothstep(age,end-.9,end));}
+    function actors(t) {
+      const legAge=reaction(t,'leg'),bombAge=reaction(t,'bomb'), knockAge=reaction(t,'knock');
+      const broken=down(legAge,3.7), fallen=down(knockAge,2.8);
+      const legCue=chapterAt(t).cues.find(e=>e.kind==='leg'), injured=legCue?.leg;
+      const throwCue=chapterAt(t).cues.find(e=>e.kind==='bomb');
+      const throwing=throwCue?bump(t-throwCue.at+1.47,.95):0;
+      path(t,true,nBot);path(t,false,nScout);
+      nBot.addScaledVector(p.copy(nBot).sub(nScout),.040*bump(bombAge,1.45)).normalize();
+      const slide=smoothstep(knockAge,0,.48)*(1-smoothstep(knockAge,1.95,2.8));
+      nScout.addScaledVector(p.copy(nScout).sub(nBot),.12*slide).normalize();
+      clearRoute(nBot,true);
+      keepOutside(nScout,nBot,1.47/3.04);
+      clearRoute(nScout,false);
+      onMoon(bot.root,nBot,nScout);
+      path(t+.16,false,travel).sub(path(t-.16,false,before));
+      const speed=travel.length()*3.04/.32;
+      const c=chapterAt(t), hiding=shelter(c,t-c.start);
+      const firing=c.cues.reduce((weight,e)=>{
+        if(!['shell','leg','bomb','knock'].includes(e.kind)) return weight;
+        const offset=t-e.at+(e.kind==='bomb'?1.05:0);
+        return Math.max(weight,smoothstep(offset,-1.0,-.18)*(1-smoothstep(offset,.18,.8)));
+      },0);
+      // Legs follow the route. At a halt or to take a shot the explorer plants
+      // their feet and pivots toward the opponent, taking the shortest turn.
+      onMoon(astro.base,nScout,nBot);
+      travel.applyQuaternion(inv.copy(astro.base.quaternion).invert());
+      const stride=smoothstep(speed,.01,.045)*(1-firing)*(1-hiding)*(1-fallen);
+      const heading=Math.atan2(travel.x,travel.z);
+      astro.base.rotateY(heading*stride);
+      const stomp=t*tau/1.2;
+      // On a leg hit the shell drops twice, rolls on its side and then levers itself upright.
+      bot.hull.position.set(0,.82+.031*Math.cos(stomp*2)*(1-broken)-.355*broken+.19*bump(bombAge,.75),0);
+      bot.hull.rotation.set(.04*Math.sin(stomp)-.47*bump(bombAge,.95),
+        tau*smoothstep(legAge,.37,2.25),1.34*broken+.17*bump(legAge,.74));
+      for(const [i,leg] of bot.legs.entries()) {
+        hip.copy(leg.socket.position).applyQuaternion(bot.hull.quaternion).add(bot.hull.position);
+        const stride=tau*(t/1.2+leg.phase), sign=Math.sign(leg.x);
+        toe.set(leg.x*1.77,.01,leg.z*1.77+.085*Math.sin(stride)*(1-broken));
+        toe.x+=broken*sign*(i===injured?-.19:.04);
+        p.copy(toe).applyQuaternion(bot.root.quaternion).add(bot.root.position).normalize();
+        // On a tight inside turn, plant the foot short of the rock and bend the knee.
+        for(const axis of coverAxes) keepOutside(p,axis,.57/3.04);
+        toe.copy(p.multiplyScalar(terrain.meshRadius(p)+.015)).sub(bot.root.position)
+          .applyQuaternion(inv.copy(bot.root.quaternion).invert());
+        toe.y+=.085*Math.max(0,Math.cos(stride))*(1-broken);
+        leg.knee.position.copy(hip).lerp(toe,.48);
+        leg.knee.position.x+=sign*(.09-.06*broken);
+        leg.knee.position.y+=.08+(i===injured?.10*broken:0);
+        link(leg.upper,hip,leg.knee.position,.062);
+        link(leg.lower,leg.knee.position,toe,.102,.084);
+      }
+      const landing=bump(knockAge,.59),brace=smoothstep(knockAge,1.35,1.82)*(1-smoothstep(knockAge,2.30,2.8));
+      astro.person.pose(t,clamp(speed*3.4,0,1.25)*(1-hiding)*(1-fallen),.30+.86*firing+.80*fallen,0,{
+        lean:.14*stride+.25*brace, crouch:.14*hiding+.10*brace,
+        leftReach:.14+1.8*throwing+.78*fallen+.5*brace,lookAside:-heading*.30*stride});
+      astro.person.base.rotation.set(-1.30*fallen+.55*brace,0,-.12*fallen);
+      astro.person.base.position.y=.22*fallen+.20*landing-.08*brace;
+      q.copy(bot.hull.position).applyQuaternion(bot.root.quaternion).add(bot.root.position);
+      astro.tool.lookAt(world.localToWorld(q));
+    }
+
+    // Record socket positions at the strike itself so dirt, sparks and laser endpoints coincide.
+    const ray=new THREE.Raycaster();
+    for(const e of events) {
+      actors(e.at);
+      e.from=local(bot.barrel,new Vector3());
+      e.to=local(astro.base,new Vector3());
+      if(e.kind==='ground' || e.kind==='knock') {
+        const offset=(e.id%2?1:-1)*(e.kind==='knock'?.18:.33);
+        local(astro.base,e.to.set(offset,0,.09+.09*Math.sin(e.id)));
+        if(e.id===0) e.to.set(-.13,3.04,.06);
+        e.to.normalize().multiplyScalar(terrain.meshRadius(e.to));
+      } else {
+        e.to=e.kind==='leg'?local(bot.legs[e.leg].knee,new Vector3()):local(bot.hull,new Vector3(.11,0,.40));
+        if(e.kind==='bomb') actors(e.at-1.05);
+        e.from=e.kind==='bomb'?local(astro.person.hands[0],new Vector3()):local(astro.tool,new Vector3(0,0,.22));
+      }
+      if(e.kind!=='bomb') {
+        ray.set(e.from,d.subVectors(e.to,e.from).normalize());
+        ray.far=e.from.distanceTo(e.to);
+        const hit=ray.intersectObjects(rocks,false)[0];
+        if(hit) {e.blocked=true;e.to.copy(hit.point);}
+      }
+      e.normal=e.to.clone().normalize();
+      e.rotation=new Quaternion().setFromUnitVectors(up,e.normal);
+    }
+
+    const updateCraters=craters(groundMesh,events);
+    const lightRay=glow('#fff1b5'), coolRay=glow('#a6ffff');
+    const beam=model(world,'stem',lightRay,[0,0,0],[1,1,1]);beam.castShadow=false;
+    const sheath=new THREE.MeshBasicMaterial({color:'#ff594d',transparent:true,opacity:.43,depthWrite:false,toneMapped:false});
+    const halo=model(world,'stem',sheath,[0,0,0],[1,1,1]);halo.castShadow=false;
+    const charge=model(world,'round',glow('#ffac76'),[0,0,0],[.08,.08,.08]);charge.castShadow=false;
+    const bomb=model(world,'pebble','#e2a368',[0,0,0],[.073,.073,.073]);
+    model(bomb,'ring',coolRay,[0,0,0],[.98,.98,.98],[Math.PI/2,0,0]);
+    const debris=impactEffects(world);
+    const rimStones=ejecta(world,terrain,events.filter(e=>e.radius));
+    return function animate(seconds) {
+      const t=wrap(seconds);
+      updateCraters(t);
+      actors(t);
+      beam.visible=halo.visible=charge.visible=bomb.visible=false;
+      let latest=null,damage=null;
+      for(const e of events) {
+        const age=t-e.at, hot=e.kind==='ground'||e.kind==='knock';
+        if(age>=0) {
+          latest=e;
+          if(!e.blocked && ['leg','bomb','shell'].includes(e.kind)) damage=e;
+        }
+        if(hot && age>-.54 && age<.18) {
+          charge.visible=true;local(bot.barrel,charge.position.set(0,0,0));
+          charge.scale.setScalar(.033+.058*smoothstep(age,-.54,0));
+        }
+        if(e.kind==='bomb') {
+          if(age>=-1.05 && age<0) {
+            const u=1+age/1.05;
+            bomb.visible=true;bomb.position.copy(e.from).lerp(e.to,u).addScaledVector(e.normal,.82*4*u*(1-u));
+            bomb.rotation.set(2*u,5*u,0);
+          }
+        } else if(age>=-.12 && age<.17) {
+          // The beam arrives at the marked point on the exact frame of the hit.
+          q.copy(e.from).lerp(e.to,smoothstep(age,-.12,0));
+          const width=(hot?.023:.015)*(1-.85*smoothstep(age,.04,.17));
+          beam.material=hot?lightRay:coolRay;sheath.color.set(hot?'#ff584b':'#5edaf3');
+          link(beam,e.from,q,width);link(halo,e.from,q,width*2.85);
+          halo.visible=beam.visible=true;
+        }
+      }
+      debris(t,latest,damage,bot);
+      rimStones(t);
+    };
+  }
+
+  // Deform the existing ground. Save only affected vertices and restore their exact
+  // original position, normal and color as each hollow fills back in.
+  function craters(geo,events) {
+    const pos=geo.attributes.position, normals=geo.attributes.normal, colors=geo.attributes.color;
+    const strikes=events.filter(e=>!e.blocked && (e.kind==='ground'||e.kind==='knock'));
+    const affected=new Map(), v=new Vector3(), tangent=new Vector3();
+    for(const e of strikes) {
+      const radius=e.kind==='knock'?.39:.31+(e.id%3)*.025;
+      e.radius=radius;
+      e.lifetime=7.4+(e.id%4)*.9;e.depth=0;
+      const toLocal=e.rotation.clone().invert();
+      for(let i=0;i<pos.count;i++) {
+        v.fromBufferAttribute(pos,i);
+        const normal=v.clone().normalize(), dot=normal.dot(e.normal);
+        const distance=3.04*Math.sqrt(Math.max(0,2-2*dot));
+        if(distance>radius*1.12) continue;
+        tangent.copy(normal).applyQuaternion(toLocal);
+        const angle=Math.atan2(tangent.z,tangent.x);
+        const u=distance/(radius*(1+.07*Math.sin(3*angle+e.id)+.04*Math.cos(5*angle)));
+        if(u>=1) continue;
+        const bowl=(1-smoothstep(u,.05,.69)), rim=Math.sin(Math.PI*clamp((u-.50)/.50,0,1))**2;
+        const height=-radius*.36*bowl+radius*.21*rim;
+        const slope=(u>.05 && u<.69?2.16*((u-.05)/.64)*(1-(u-.05)/.64)/.64:0)
+          +(u>.5?.42*Math.PI*Math.sin(2*Math.PI*(u-.5)/.5):0);
+        tangent.copy(normal).multiplyScalar(dot).sub(e.normal).normalize();
+        if(!affected.has(i)) affected.set(i,{i,base:v.clone(),normal:new Vector3().fromBufferAttribute(normals,i),
+          radial:normal,color:new Color(colors.getX(i),colors.getY(i),colors.getZ(i)),terms:[]});
+        affected.get(i).terms.push({e,height,tone:-.63*bowl+.21*rim,tilt:tangent.clone().multiplyScalar(-slope)});
+      }
+    }
+    return t=>{
+      let changed=false;
+      for(const e of strikes) {
+        const age=THREE.MathUtils.euclideanModulo(t-e.at,period);
+        const depth=smoothstep(age,0,.09)*(1-smoothstep(age,e.lifetime*.50,e.lifetime));
+        if(depth!==e.depth) changed=true;
+        e.depth=depth;
+      }
+      if(!changed) return;
+      for(const cell of affected.values()) {
+        let h=0,brightness=1;
+        tangent.copy(cell.normal);
+        for(const term of cell.terms) {
+          const w=term.e.depth;
+          h+=w*term.height;brightness+=w*term.tone;tangent.addScaledVector(term.tilt,w);
+        }
+        v.copy(cell.base).addScaledVector(cell.radial,h);
+        tangent.normalize();pos.setXYZ(cell.i,v.x,v.y,v.z);normals.setXYZ(cell.i,tangent.x,tangent.y,tangent.z);
+        brightness=Math.max(.22,brightness);
+        colors.setXYZ(cell.i,cell.color.r*brightness,cell.color.g*brightness,cell.color.b*brightness);
+      }
+      pos.needsUpdate=normals.needsUpdate=colors.needsUpdate=true;
+    };
+  }
+
+  // Store each fragment's landing site once. The same stone that flies out
+  // bounces onto the rim and stays there until the crater fills in.
+  function ejecta(world,terrain,strikes) {
+    const chips=19,mesh=new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1,0),
+      new THREE.MeshStandardMaterial({roughness:.94,flatShading:true}),chips*strikes.length);
+    mesh.name='Осколки грунта и каменистая кромка';
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.castShadow=mesh.receiveShadow=true;mesh.frustumCulled=false;
+    world.add(mesh);
+    const chip=new THREE.Object3D(), p=new Vector3();
+    const palette=['#9f7f94','#69546c','#b997a1','#82697e','#574658'].map(hex=>new Color(hex));
+    for(const e of strikes) {
+      const rng=Land.rng(4206+e.id*71);
+      e.fragments=Array.from({length:chips},(_,i)=>{
+        const angle=tau*(i+rng()*.75)/chips;
+        const radius=e.radius*(i%4===0?1.24+.65*rng():.70+.25*rng());
+        const normal=new Vector3(radius*Math.cos(angle),0,radius*Math.sin(angle))
+          .applyQuaternion(e.rotation).add(e.to).normalize();
+        const size=(i%5===0?.072:.035)+rng()*.035;
+        return {normal,size,rot:rng()*tau,flight:.38+.56*rng(),height:.14+.29*rng(),color:palette[i%5]};
+      });
+    }
+    return t=>{
+      let count=0;
+      for(const e of strikes) {
+        const age=THREE.MathUtils.euclideanModulo(t-e.at,period);
+        if(age>=e.lifetime) continue;
+        for(const f of e.fragments) {
+          const u=clamp(age/f.flight,0,1),bounce=clamp((age-f.flight)/.22,0,1);
+          const size=f.size*(1-smoothstep(age,e.lifetime*.65,e.lifetime))*smoothstep(age,0,.075);
+          p.copy(e.normal).lerp(f.normal,u+.034*Math.sin(Math.PI*bounce)).normalize();
+          chip.position.copy(p).multiplyScalar(terrain.meshRadius(p)+size*.37+
+            4*u*(1-u)*f.height+.055*Math.sin(Math.PI*bounce));
+          chip.quaternion.copy(e.rotation);
+          chip.rotateY(f.rot+u*2.3);chip.rotateX(.3+u*2.8);
+          chip.scale.set(size*1.24,size*.72,size);chip.updateMatrix();
+          mesh.setMatrixAt(count,chip.matrix);mesh.setColorAt(count,f.color);count++;
+        }
+      }
+      mesh.count=count;
+      if(count) {mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;}
+    };
+  }
+
+  function impactEffects(world) {
+    const group=new Group();world.add(group);
+    const ember=glow('#ffc173'), white=glow('#fff4cd');
+    const clods=Array.from({length:15},(_,i)=>model(group,'pebble',i%3===0?'#b48aa3':i%3===1?'#704e71':'#926e8e',[0,0,0],[1,1,1]));
+    const grains=Array.from({length:13},(_,i)=>model(group,'tiny',i%3===0?white:ember,[0,0,0],[1,1,1]));
+    for(const g of grains) g.castShadow=false;
+    const flashMaterial=new THREE.MeshBasicMaterial({color:'#fff1bd',transparent:true,toneMapped:false,depthWrite:false});
+    const burst=model(group,'pebble',flashMaterial,[0,0,0],[1,1,1]);burst.castShadow=false;
+    const scorch=new Group();world.add(scorch);
+    for(let i=0;i<7;i++) model(scorch,'tiny',i%3===0?white:ember,[0,0,0],[1,1,1]).castShadow=false;
+    const smoke=Array.from({length:6},()=>{
+      const material=new THREE.MeshBasicMaterial({color:'#958b9e',transparent:true,opacity:0,depthWrite:false});
+      const puff=model(scorch,'pebble',material,[0,0,0],[1,1,1]);puff.castShadow=false;return puff;
+    });
+    const sparkParticles=scorch.children.slice(0,7);
+    const scratch=new Vector3();
+    return (t,last,damage,bot)=>{
+      group.visible=false;scorch.visible=false;
+      if(!last) return;
+      const age=t-last.at,earth=last.kind==='ground'||last.kind==='knock';
+      if(damage && t>=damage.at && t-damage.at<3.85) {
+        const dt=t-damage.at, fade=1-smoothstep(dt,.65,3.85);
+        scorch.visible=true;
+        const socket=damage.kind==='leg'?bot.legs[damage.leg].knee:bot.hull;
+        scorch.position.copy(world.worldToLocal(socket.localToWorld(scratch.set(.05,.03,.02))));
+        scorch.quaternion.copy(damage.rotation);
+        sparkParticles.forEach((particle,i)=>{
+          const f=(dt*(2+i*.08)+i*.37)%1,a=i*2.4+Math.floor(dt*2)*.7;
+          particle.position.set(Math.cos(a)*f*.19*fade,f*(.23-.18*f)*fade,Math.sin(a)*f*.19*fade);
+          particle.scale.setScalar(.022*(1-f)*fade);
+        });
+        smoke.forEach((puff,i)=>{
+          const f=(dt*.68+i/6)%1;
+          puff.visible=dt>=i*.13;
+          puff.position.set(.12*f+.06*Math.sin(5*f+i),.08+.58*f,.06*f*Math.cos(i));
+          puff.scale.setScalar(.04+.10*f);
+          puff.material.opacity=.36*fade*Math.sin(Math.PI*f);
+        });
+      }
+      if(age>1.22) return;
+      group.visible=true;group.position.copy(last.to);group.quaternion.copy(last.rotation);
+      burst.visible=age<.22;burst.scale.setScalar((last.kind==='bomb'?.24:.115)*(.32+Math.sin(Math.PI*clamp(age/.22,0,1))));
+      flashMaterial.opacity=1-smoothstep(age,.04,.22);
+      clods.forEach((rock,i)=>{
+        const f=age/(.60+(i%5)*.13);
+        rock.visible=earth && Boolean(last.blocked) && f<1;
+        if(!rock.visible) return;
+        const angle=i*2.4+last.id*.7, dist=f*(.26+(i%6)*.09);
+        rock.position.set(Math.cos(angle)*dist,.025+4*f*(1-f)*(.085+(i%4)*.048)-dist*dist/6,Math.sin(angle)*dist);
+        rock.rotation.set(i+3*f,i-f,5*f);
+        rock.scale.setScalar((.029+.009*(i%4))*(1-smoothstep(f,.62,1)));
+      });
+      grains.forEach((g,i)=>{
+        const f=age/(.22+(i%4)*.075);g.visible=f<1;
+        if(!g.visible) return;
+        const a=i*2.4+last.id, r=(.12+(i%5)*.075)*f*(earth?.75:1.35);
+        g.position.set(r*Math.cos(a),f*(.35+.1*Math.sin(a)-.32*f),r*Math.sin(a));
+        g.rotation.z=-Math.cos(a)*1.1;
+        g.scale.set(.013,.049,.013).multiplyScalar(1-f*.91);
+      });
+    };
+  }
+  return {create};
+})();
+
+;
 const StoryWorlds = (() => {
   const { Color, Group, Mesh, Vector2, Vector3 } = THREE;
   const { clamp, lerp, smoothstep } = THREE.MathUtils;
@@ -8067,8 +8572,24 @@ const StoryWorlds = (() => {
     return new THREE.TubeGeometry(curve,steps,radius,5,false);
   }
 
-  function sphere(group, radius, paint) {
-    const terrain = Land.globeGeometry(112, 60, (lon,lat) => {
+  function terrainAngles(steps,span,detail,secondBand) {
+    const angles=[];
+    for(let i=0;i<steps;i++) {
+      const start=(i/steps-.5)*span;
+      const refine=(detail && start>=detail[0] && start<=detail[1]) ||
+        (secondBand && start>=secondBand[0] && start<=secondBand[1]);
+      const parts=refine?4:1;
+      for(let j=0;j<parts;j++) angles.push(start+j*span/(parts*steps));
+    }
+    angles.push(span/2);
+    return angles;
+  }
+
+  function sphere(group, radius, paint,detail) {
+    const lons=terrainAngles(112,tau,detail?.lon), lats=terrainAngles(60,Math.PI,detail?.lat,detail?.secondLat);
+    const slices=lons.length-1, bands=lats.length-1;
+    const terrain = Land.globeGeometry(slices,bands,(u,v) => {
+      const lon=lons[Math.round((u/tau+.5)*slices)],lat=lats[Math.round((v/Math.PI+.5)*bands)];
       const normal = Land.direction(lon,lat);
       const { height,color } = paint(normal);
       return { position: normal.multiplyScalar(radius+height),color };
@@ -8078,9 +8599,12 @@ const StoryWorlds = (() => {
     globe.castShadow=true;
     group.add(globe);
 
+    function surfacePosition(normal,lift=0) {
+      return normal.clone().multiplyScalar(radius+paint(normal).height+lift);
+    }
+
     function put(object,lon,lat,lift=0,yaw=0) {
-      const normal=Land.direction(lon,lat);
-      object.position.copy(normal).multiplyScalar(radius+paint(normal).height+lift);
+      object.position.copy(surfacePosition(Land.direction(lon,lat),lift));
       object.quaternion.copy(Land.frame(lon,lat).rotation);
       object.rotateY(yaw);
       return object;
@@ -8092,7 +8616,35 @@ const StoryWorlds = (() => {
       return site;
     }
 
-    return {put,place};
+    // Contact with the rendered triangles, including the seam between longitudes.
+    const ray=new THREE.Ray(), triA=new Vector3(),triB=new Vector3(),triC=new Vector3(),hit=new Vector3();
+    const vertices=terrain.attributes.position;
+    function interval(axis,value) {
+      let low=0,high=axis.length-1;
+      while(high-low>1) {
+        const mid=(low+high)>>1;
+        if(value<axis[mid]) high=mid;
+        else low=mid;
+      }
+      return low;
+    }
+    function meshRadius(n) {
+      const col=interval(lons,Math.atan2(n.x,n.z)), row=interval(lats,Math.asin(clamp(n.y,-1,1)));
+      ray.direction.copy(n);
+      for(const delta of [0,1,-1]) {
+        const j=row+delta;
+        if(j<0 || j>=bands) continue;
+        const a=j*(slices+1)+col, c=a+slices+1;
+        triA.fromBufferAttribute(vertices,a);
+        triB.fromBufferAttribute(vertices,a+1);
+        triC.fromBufferAttribute(vertices,c);
+        if(ray.intersectTriangle(triA,triB,triC,false,hit)) return hit.dot(n);
+        triA.fromBufferAttribute(vertices,c+1);
+        if(ray.intersectTriangle(triB,triA,triC,false,hit)) return hit.dot(n);
+      }
+      return radius+paint(n).height;
+    }
+    return {put,place,surfacePosition,meshRadius,geometry:terrain};
   }
 
   function trailPose(stops,time) {
@@ -8126,12 +8678,792 @@ const StoryWorlds = (() => {
     return crystals;
   }
 
-  function coverView(site,elevation) {
-    const heading=new Vector3(0,elevation,1).applyQuaternion(site.quaternion).normalize();
+  function coverView(site,elevation,side=0) {
+    const heading=new Vector3(side,elevation,1).applyQuaternion(site.quaternion).normalize();
     const vertical=new Vector3(0,1,0).applyQuaternion(site.quaternion);
     return new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().lookAt(heading,new Vector3(),vertical)
     );
+  }
+
+  function rocketShortCircuit(ship,berth) {
+    // Both ends protrude from the window side of the torn seam.
+    const from=[-.16,.465,.421], to=[-.091,.589,.438];
+    model(ship,tube([[-.115,.364,.300],[-.17,.406,.378],from],.020,5),'#705b62',[0,0,0],[1,1,1]);
+    model(ship,tube([[-.050,.68,.389],[-.067,.628,.429],to],.017,5),'#a97661',[0,0,0],[1,1,1]);
+    const white=new THREE.MeshBasicMaterial({color:'#edffff',toneMapped:false});
+    const amber=new THREE.MeshBasicMaterial({color:'#ffbf68',toneMapped:false});
+    const blue=new THREE.MeshBasicMaterial({color:'#a7e4ff',toneMapped:false});
+    const arc=model(ship,tube([from,[-.186,.493,.476],[-.122,.508,.464],[-.149,.55,.481],to],.014,4),
+      blue,[0,0,0],[1,1,1]);
+    const contact=model(ship,'tiny',white,from,[.045,.043,.040]);
+    arc.castShadow=arc.receiveShadow=contact.castShadow=contact.receiveShadow=false;
+
+    const origin=berth.worldToLocal(ship.localToWorld(new Vector3(...from)));
+    const outward=new Vector3(-.36,0,1).normalize().applyQuaternion(ship.quaternion);
+    const alongHull=new Vector3(0,1,0).applyQuaternion(ship.quaternion);
+    const vertical=new Vector3(0,1,0), direction=new Vector3();
+    const trails=[
+      // Launch delay, outward speed, spread along the fuselage, rise, lifetime.
+      [0,1.43,-.85,.94,.47],[.035,1.08,.52,.64,.54],[.07,1.65,-.18,.33,.48],
+      [.095,.99,.90,.55,.46],[.13,1.24,-.45,1.10,.60],
+      [.31,1.41,.20,.84,.51],[.35,1.12,-.67,.46,.46]
+    ].map(([delay,speed,spread,rise,life],i)=>{
+      const velocity=outward.clone().multiplyScalar(speed).addScaledVector(alongHull,spread);
+      velocity.y+=rise;
+      const streak=model(berth,'tiny',i%3===0?white:amber,origin.toArray(),[1,1,1]);
+      streak.castShadow=streak.receiveShadow=false;
+      streak.name='Искра на изломе';
+      return {streak,velocity,delay,life};
+    });
+    return seconds=>{
+      const t=(seconds+7.55)%7.9;
+      const age=t>=5.35?t-5.35:t>=2.35?t-2.35:t;
+      const doubleBurst=t<2.35 || t>=5.35;
+      arc.visible=age<.16 || (doubleBurst && age>=.30 && age<.41);
+      contact.visible=arc.visible;
+      for(const {streak,velocity,delay,life} of trails) {
+        const flight=age-delay;
+        streak.visible=flight>=0 && flight<life && (doubleBurst || delay<.30);
+        if(!streak.visible) continue;
+        streak.position.copy(origin).addScaledVector(velocity,flight);
+        streak.position.y-=1.75*flight*flight;
+        direction.copy(velocity);
+        direction.y-=3.5*flight;
+        streak.quaternion.setFromUnitVectors(vertical,direction.normalize());
+        const fade=1-smoothstep(flight,life*.5,life);
+        streak.scale.set(.020*fade,(.064+.036*flight/life)*fade,.020*fade);
+      }
+    };
+  }
+
+  function impactFurrow(tip,exhaust,radius) {
+    // Follow the great circle through the two ends of the wreck. Width is measured across the ground.
+    const across=tip.clone().cross(exhaust).normalize(), along=across.clone().cross(tip);
+    const length=radius*tip.angleTo(exhaust)+1.68;
+    const floor=new Color('#634653'), fracture=new Color('#ad849f'), lip=new Color('#886783');
+    function direction(t,side) {
+      const angle=(1-t)*length/radius;
+      return tip.clone().multiplyScalar(Math.cos(angle)).addScaledVector(along,Math.sin(angle))
+        .multiplyScalar(Math.cos(side/radius)).addScaledVector(across,Math.sin(side/radius));
+    }
+    function profile(n) {
+      if(n.dot(tip)<.52) return null;
+      const distance=radius*Math.atan2(n.dot(along),n.dot(tip));
+      if(distance<-.17 || distance>length) return null;
+      const t=clamp(1-distance/length,0,1);
+      const side=radius*Math.asin(clamp(n.dot(across),-1,1));
+      const roughness=.029*Math.sin(14*t+Math.sign(side))+.017*Math.sin(32*t-2*Math.sign(side));
+      const halfWidth=.54+.075*Math.sin(t*Math.PI)+roughness;
+      const edge=Math.abs(side)/halfWidth;
+      if(edge>=1.35) return null;
+      const entry=.034*edge*edge+.019*Math.sin(13*side);
+      const fade=smoothstep(distance,-.16,.24)*smoothstep(t,entry,entry+.12);
+      return {t,side,edge,fade};
+    }
+    function carve(n,soil) {
+      const p=profile(n);
+      if(!p) return soil;
+      const {t,side,edge,fade}=p;
+      const bed=(1-smoothstep(edge,.54,1.05))*fade;
+      const bank=(1-smoothstep(Math.abs(edge-1.02),0,.33))*fade;
+      const grain=Math.sin(24*side+1.2*Math.sin(7*t))*.5+.5;
+      const scuff=bed*smoothstep(grain,.66,.96)*smoothstep(Math.cos(13*t+side*5),-.7,.75);
+      soil.height-=(.066+.091*t+.015*grain)*bed;
+      soil.height+=(.024+.037*t)*bank*(.79+.21*Math.sin(16*t+side*5));
+      soil.color.lerp(floor,bed*(.62+.23*grain));
+      soil.color.lerp(fracture,scuff*.22);
+      soil.color.lerp(fracture,fade*(1-smoothstep(Math.abs(edge-.82),.03,.24))*(.43+.19*Math.sin(21*t+side*7)));
+      soil.color.lerp(lip,bank*.45);
+      return soil;
+    }
+    function scraped(n) {
+      const p=profile(n);
+      return p && p.edge<.98 && p.fade>.16;
+    }
+    return {direction,carve,scraped};
+  }
+
+  function surfaceStrip(parent,rows,material,name) {
+    const vertices=[],indices=[];
+    for(const [i,[left,right]] of rows.entries()) {
+      vertices.push(...left.toArray(),...right.toArray());
+      if(i>0) indices.push(2*i-2,2*i-1,2*i,2*i,2*i-1,2*i+1);
+    }
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.Float32BufferAttribute(vertices,3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const mesh=new Mesh(geometry,material);
+    mesh.name=name;
+    mesh.receiveShadow=true;
+    parent.add(mesh);
+    return mesh;
+  }
+
+  function scrapeAtContact(berth,cowling,stone) {
+    const anchor=stone.position;
+    const ray=new THREE.Raycaster();
+    ray.ray.direction.set(0,0,-1).transformDirection(berth.matrixWorld);
+    // Project one stroke at the height of the contact onto the two intersecting faces.
+    // The nearer surface hides the overlap, even when the planet turns.
+    function mark(mesh,start,end,color,name,onStone) {
+      mesh.updateWorldMatrix(true,false);
+      const rows=[];
+      for(let i=0;i<=28;i++) {
+        const f=i/28, dx=lerp(start,end,f);
+        const y=anchor.y+.067+.07*dx+.58*Math.max(0,dx-.14)+.003*Math.sin(51*dx);
+        const width=(.017+.004*Math.cos(76*dx))*(onStone?smoothstep(f,0,.31):1-smoothstep(f,.62,1));
+        const pair=[];
+        for(const edge of [-1,1]) {
+          ray.ray.origin.copy(berth.localToWorld(new Vector3(anchor.x+dx,y+edge*width,anchor.z+.9)));
+          const hit=ray.intersectObject(mesh,false)[0];
+          if(hit) {
+            const p=berth.worldToLocal(hit.point);
+            p.z+=.0015;
+            pair.push(p);
+          }
+        }
+        if(pair.length===2) rows.push(pair);
+      }
+      if(rows.length>1) surfaceStrip(berth,rows,new THREE.MeshStandardMaterial({
+        color,emissive:color,emissiveIntensity:.10,roughness:.86,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-1
+      }),name);
+    }
+    mark(stone,-.10,.15,'#d48059','Перенос краски на камне',true);
+    mark(cowling,.123,.36,'#bdada5','Царапина на обшивке',false);
+  }
+
+  function crawlerMantle() {
+    const profile=[
+      // Height, lateral shift, front-to-back center, half width, half depth.
+      [.235,.006,.025,.163,.154],[.335,.010,.032,.218,.202],[.49,.019,.036,.266,.245],
+      [.68,.016,.031,.339,.297],[.87,.006,.018,.395,.353],[1.055,-.012,.002,.402,.359],
+      [1.215,-.026,-.022,.348,.305],[1.315,-.031,-.032,.228,.199]
+    ];
+    const sides=12,positions=[],indices=[];
+    for(const [ring,[height,shift,center,width,depth]] of profile.entries()) {
+      for(let i=0;i<sides;i++) {
+        const angle=i*tau/sides;
+        positions.push(shift+width*Math.sin(angle),height,center+depth*Math.cos(angle));
+        if(ring===profile.length-1) continue;
+        const a=ring*sides+i,b=ring*sides+(i+1)%sides;
+        indices.push(a,b,a+sides,b,b+sides,a+sides);
+      }
+    }
+    const bottom=positions.length/3, crown=bottom+1, lastRing=(profile.length-1)*sides;
+    positions.push(.004,.175,.022,-.032,1.37,-.038);
+    for(let i=0;i<sides;i++) {
+      const next=(i+1)%sides;
+      indices.push(bottom,next,i,crown,lastRing+i,lastRing+next);
+    }
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  function crawlerEye(mantle,shell) {
+    // Map the pupil and its catchlight onto a single curved surface.
+    const lens=new THREE.SphereGeometry(1,28,12,0,tau,0,Math.PI/2).rotateX(Math.PI/2);
+    const points=lens.getAttribute('position'), uv=lens.getAttribute('uv');
+    const eye=new Group();
+    eye.position.set(.035,.97,.371);
+    eye.rotation.set(-.43,.12,-.08);
+    mantle.add(eye);
+    shell.updateWorldMatrix(true,false);
+    eye.updateWorldMatrix(true,false);
+    const ray=new THREE.Raycaster();
+    ray.ray.direction.set(0,0,-1).transformDirection(eye.matrixWorld);
+    const sample=new Vector3(), hits=[];
+    for(let i=0;i<points.count;i++) {
+      const x=points.getX(i), y=points.getY(i), dome=points.getZ(i);
+      uv.setXY(i,x*.5+.5,y*.5+.5);
+      ray.ray.origin.copy(eye.localToWorld(sample.set(x*.192,y*.181,.30)));
+      ray.intersectObject(shell,false,hits);
+      const rim=hits.length?eye.worldToLocal(hits[0].point).z+.007:0;
+      const depth=Math.max(.088*dome,rim+.035*dome);
+      points.setXYZ(i,x*.192,y*.181,lerp(depth,rim,smoothstep(Math.hypot(x,y),.72,1)));
+      hits.length=0;
+    }
+    lens.computeVertexNormals();
+    const size=96, pixels=new Uint8Array(size*size*4);
+    const cream=[242,223,196], ink=[22,31,48], glint=[250,245,231];
+    for(let y=0;y<size;y++) {
+      for(let x=0;x<size;x++) {
+        const u=(x+.5)*2/size-1, v=(y+.5)*2/size-1;
+        const pupil=1-smoothstep(Math.hypot(u-.07,v-.035),.56,.59);
+        const shine=1-smoothstep(Math.hypot(u+.104,v-.233),.104,.126);
+        const offset=(y*size+x)*4;
+        for(let c=0;c<3;c++) pixels[offset+c]=lerp(lerp(cream[c],ink[c],pupil),glint[c],shine);
+        pixels[offset+3]=255;
+      }
+    }
+    const map=new THREE.DataTexture(pixels,size,size);
+    map.colorSpace=THREE.SRGBColorSpace;
+    map.magFilter=map.minFilter=THREE.LinearFilter;
+    map.needsUpdate=true;
+    model(eye,lens,new THREE.MeshStandardMaterial({map,roughness:.58}),[0,0,0],[1,1,1]);
+    return eye;
+  }
+
+  // A local chart of the southern hemisphere avoids the longitude seam at the pole.
+  // Keyframes describe the action. Mesh footprints below bend both paths around scenery.
+  function sporeEncounter(obstacles) {
+    const period=56, count=280, interval=period/count, radius=3.04;
+    const scoutKeys=[
+      [0,-.84,.85],[2,-.48,.86],[3.25,-.26,.87],[4.6,-.15,.89],[5.1,-.10,.94],
+      [6.6,.17,1.36],[8.5,.36,1.79],[10.6,.57,2.02],[13,.80,2.16],[18,.86,1.97],[26,.91,2.25],
+      [34,.94,2.26],[40,.74,2.01],[46,-.21,1.58],[50,-1.11,1.30],[53,-1.16,.97],[56,-.84,.85]
+    ];
+    const crawlerKeys=[
+      [0,-.20,-1.23],[2,-.43,-1.28],[3.4,-.57,-1.30],[4.7,-.63,-1.30],
+      [5.3,-.58,-1.22],[6.6,-.38,-.84],[8.5,-.12,-.12],[10.6,.15,.84],
+      [11,.17,.88],[13,-.36,.34],[17,-.83,-.86],[21,-.83,-1.42],
+      [29,-.68,-1.49],[38,-.42,-1.44],[44,.51,-1.09],[50,.38,-1.12],[56,-.20,-1.23]
+    ];
+    function route(keys,clearance,variant) {
+      const points=keys.map(([t,x,z],i)=>{
+        // Keep the crosswise approach and the sight lines consistent across takes.
+        const change=smoothstep(t,5,9)*(1-smoothstep(t,46,52));
+        return new Vector3(x+.24*change*Math.sin(variant+i*.65),0,z+.12*change*Math.cos(variant+i*.83));
+      });
+      const samples=[];
+      let k=0;
+      for(let i=0;i<count;i++) {
+        const t=i*interval;
+        while(t>=keys[k+1][0]) k++;
+        const a=points[k], b=points[k+1], before=points[Math.max(0,k-1)], after=points[Math.min(k+2,points.length-1)];
+        const duration=keys[k+1][0]-keys[k][0], u=(t-keys[k][0])/duration;
+        const p=a.clone().lerp(b,u*u*(3-2*u));
+        p.addScaledVector(b.clone().sub(before),u*(1-u)**2*duration/(keys[k+1][0]-keys[Math.max(0,k-1)][0]));
+        p.addScaledVector(after.clone().sub(a),-u*u*(1-u)*duration/(keys[Math.min(k+2,points.length-1)][0]-keys[k][0]));
+        p.y=-Math.sqrt(radius*radius-p.x*p.x-p.z*p.z);
+        p.normalize();
+        for(let pass=0;pass<8;pass++) {
+          let moved=false;
+          for(const obstacle of obstacles) {
+            const dot=p.dot(obstacle.axis), limit=obstacle.angle+clearance/radius;
+            if(dot>=Math.cos(limit)) {
+              p.addScaledVector(obstacle.axis,-dot).normalize().multiplyScalar(Math.sin(limit+.001))
+                .addScaledVector(obstacle.axis,Math.cos(limit+.001));
+              moved=true;
+            }
+          }
+          if(!moved) break;
+        }
+        samples.push(p);
+      }
+      return samples;
+    }
+    const variants=Array.from({length:8},(_,i)=>({
+      scout:route(scoutKeys,.32,i*2.4), crawler:route(crawlerKeys,1.24,i*2.4)
+    }));
+    function sample(role,time,out) {
+      const frame=Math.floor(time/interval), u=time/interval-frame;
+      function point(index) {
+        const lap=Math.floor(index/count);
+        return variants[THREE.MathUtils.euclideanModulo(lap,variants.length)][role][THREE.MathUtils.euclideanModulo(index,count)];
+      }
+      return out.copy(point(frame)).lerp(point(frame+1),u).normalize();
+    }
+    const next=new Vector3(), previous=new Vector3(), direction=new Vector3();
+    function pose(role,time,out) {
+      sample(role,time,direction);
+      sample(role,time+.12,next).sub(sample(role,time-.12,previous));
+      const lon=Math.atan2(direction.x,direction.z), lat=Math.asin(direction.y);
+      const east=next.x*Math.cos(lon)-next.z*Math.sin(lon);
+      const south=(next.x*Math.sin(lon)+next.z*Math.cos(lon))*direction.y-next.y*Math.cos(lat);
+      out.set(lon,lat,Math.atan2(east,south));
+      return out;
+    }
+    return {pose,period};
+  }
+
+  // Circumscribe the actual geometry in angular space. Tilted caps, clustered
+  // stalks and both ends of the stone arch get their own exclusion areas.
+  function sporeObstacle(object) {
+    object.updateWorldMatrix(true,true);
+    const vertices=[], point=new Vector3(), axis=new Vector3();
+    object.traverse(part=>{
+      if(!part.isMesh) return;
+      const positions=part.geometry.attributes.position;
+      for(let i=0;i<positions.count;i++) {
+        point.fromBufferAttribute(positions,i).applyMatrix4(part.matrixWorld).normalize();
+        vertices.push(point.clone());
+        axis.add(point);
+      }
+    });
+    axis.normalize();
+    let minDot=1;
+    for(const vertex of vertices) minDot=Math.min(minDot,vertex.dot(axis));
+    return {axis,angle:Math.acos(clamp(minDot,-1,1))};
+  }
+
+  function sporeGrowths(solid,terrain,obstacles) {
+    const hull=new THREE.DodecahedronGeometry(1);
+    const surface=hull.attributes.position, faces=[], paneColors=[];
+    const azure=new Color('#328acb'), aqua=new Color('#85f1ed');
+    // Three triangles form each pentagon. Rebuild its inset as one raised pane.
+    for(let first=0;first<surface.count;first+=9) {
+      const corners=[];
+      for(let i=first;i<first+9;i++) {
+        const p=new Vector3().fromBufferAttribute(surface,i);
+        if(!corners.some(c=>c.distanceToSquared(p)<1e-8)) corners.push(p);
+      }
+      const center=corners.reduce((sum,p)=>sum.add(p),new Vector3()).divideScalar(corners.length);
+      const normal=center.clone().normalize(), x=corners[0].clone().sub(center).normalize();
+      const y=new Vector3().crossVectors(normal,x);
+      corners.sort((a,b)=>Math.atan2(a.dot(y),a.dot(x))-Math.atan2(b.dot(y),b.dot(x)));
+      const rim=corners.map(p=>center.clone().lerp(p,.78).addScaledVector(normal,.008));
+      const pane=corners.map(p=>center.clone().lerp(p,.60).addScaledVector(normal,.091));
+      const peak=center.clone().addScaledVector(normal,.115);
+      const tint=azure.clone().lerp(aqua,clamp(.52+.33*normal.y+.28*Math.sin(first*1.4),0,1));
+      const edge=tint.clone().multiplyScalar(.68);
+      for(let i=0;i<5;i++) {
+        const j=(i+1)%5;
+        faces.push(rim[i],rim[j],pane[j],rim[i],pane[j],pane[i],pane[i],pane[j],peak);
+        for(const color of [edge,edge,tint,edge,tint,tint,tint,tint,tint]) paneColors.push(...color.toArray());
+      }
+    }
+    function geometry(points) {
+      const result=new THREE.BufferGeometry();
+      result.setAttribute('position',new THREE.Float32BufferAttribute(points.flatMap(p=>p.toArray()),3));
+      result.computeVertexNormals();
+      return result;
+    }
+    const panes=geometry(faces);
+    panes.setAttribute('color',new THREE.Float32BufferAttribute(paneColors,3));
+    const enamel=new THREE.MeshStandardMaterial({color:'#3477ad',roughness:.69,flatShading:true});
+    const innerLight=new THREE.MeshStandardMaterial({vertexColors:true,emissive:'#3187ae',emissiveIntensity:.29,
+      roughness:.48,flatShading:true});
+    const tipLight=new THREE.MeshStandardMaterial({color:'#b5f6ee',emissive:'#77e6e2',emissiveIntensity:.59});
+    const spine=new THREE.CylinderGeometry(.72,1,1,5,1), joint=new THREE.IcosahedronGeometry(1,0);
+    const tip=new THREE.CylinderGeometry(.71,1,1,5,1);
+    const vertical=new Vector3(0,1,0);
+    function shoot(plant,points,widths,color) {
+      for(let i=1;i<points.length;i++) {
+        const a=new Vector3(...points[i-1]), b=new Vector3(...points[i]), axis=b.clone().sub(a);
+        const width=widths[i-1];
+        const part=model(plant,spine,color,a.lerp(b,.5).toArray(),[width,axis.length(),width]);
+        part.quaternion.setFromUnitVectors(vertical,axis.normalize());
+        if(i<points.length-1) model(plant,joint,color,points[i],[width*.84,width*.84,width*.84]);
+      }
+    }
+    const leafPoints=[[0,0,0],[-.108,.14,.005],[0,.17,.065],[.11,.13,0],[.026,.34,-.17]].map(p=>new Vector3(...p));
+    const leaf=geometry([0,2,1,0,3,2,1,2,4,2,3,4].map(i=>leafPoints[i]));
+    const foliage=new THREE.MeshStandardMaterial({color:'#375881',side:THREE.DoubleSide,flatShading:true});
+    function blades(plant) {
+      for(const [i,yaw] of [.25,2.25,4.20].entries()) {
+        model(plant,leaf,foliage,[0,.005,0],[.72+i*.1,.83+i*.08,1],[-.33,yaw,0]);
+      }
+    }
+    function pods(plant) {
+      shoot(plant,[[0,-.065,0],[-.07,.14,0],[-.10,.41,.025]],[.085,.067],'#845989');
+      shoot(plant,[[-.065,.135,0],[.15,.25,-.065],[.21,.32,-.075]],[.066,.045],'#93658e');
+      for(const [x,y,z,w,h,turn] of [[-.11,.57,.024,.30,.33,.18],[.215,.39,-.075,.168,.194,-.39]]) {
+        const rotation=[.09,turn,turn*.55];
+        model(plant,hull,enamel,[x,y,z],[w,h,w*.90],rotation);
+        model(plant,panes,innerLight,[x,y,z],[w,h,w*.90],rotation);
+      }
+    }
+    function coral(plant) {
+      const pink='#bc739b';
+      shoot(plant,[[0,-.055,0],[.025,.15,.003],[-.12,.30,.019],[-.085,.45,-.014]],[.073,.068,.046],pink);
+      shoot(plant,[[.022,.14,0],[.17,.25,-.055],[.14,.365,-.047],[.208,.42,-.02]],[.057,.045,.030],'#cd82a6');
+      shoot(plant,[[-.12,.30,.019],[-.23,.33,.074],[-.22,.405,.075]],[.043,.030],'#ad6898');
+    }
+    function lanterns(plant) {
+      blades(plant);
+      for(const [x,h,z] of [[.16,.62,.07],[-.16,.37,.095],[.035,.46,-.17]]) {
+        const neck=[x,h,z];
+        shoot(plant,[[0,-.045,0],[x*.43,h*.42,z*.54],[x*.91,h*.76,z],neck],[.045,.034,.026],'#bc78a3');
+        model(plant,tip,'#975e8e',neck,[.070,.065,.068],[.08,.25,0]);
+        model(plant,tip,tipLight,[x,h+.040,z],[.049,.054,.052],[.08,.25,0]);
+      }
+    }
+    const sites=[
+      [-1.66,-.55,1.14,.25],[1.48,-.78,.93,2.36],[-.32,.62,.90,1.16],
+      [2.72,.55,1.06,3.23],[-2.88,-.41,.76,2.12],[.13,-.28,.73,4.06]
+    ];
+    for(const [i,[lon,lat,scale,yaw]] of sites.entries()) {
+      const center=Land.direction(lon,lat).multiplyScalar(3.04);
+      const rotation=Land.frame(lon,lat).rotation;
+      // Each root follows its own surface normal, including on the underside of the world.
+      for(const [j,build] of [pods,coral,lanterns].entries()) {
+        if((i===4 && j===0) || (i===1 && j===1) || (i===2 && j===2)) continue;
+        const offset=[[0,0],[-.46,.18],[.42,-.25]][j];
+        const n=new Vector3(offset[0]*scale,0,offset[1]*scale).applyAxisAngle(vertical,yaw)
+          .applyQuaternion(rotation).add(center).normalize();
+        const plant=terrain.place(solid,Math.atan2(n.x,n.z),Math.asin(n.y),0,yaw+.42*j);
+        plant.position.copy(n).multiplyScalar(terrain.meshRadius(n)-.016);
+        plant.scale.setScalar(scale*(j===1 && i%2 ? .83 : 1));
+        build(plant);
+        obstacles.push(sporeObstacle(plant));
+      }
+    }
+  }
+
+  function sporeCrawler(world,terrain,encounter) {
+    const base=new Group(), mantle=new Group();
+    base.name='Большой одноглазый осьминог';
+    world.add(base);
+    base.add(mantle);
+
+    const skin=new THREE.MeshStandardMaterial({color:'#4a81c5',roughness:.84,flatShading:true});
+    const shell=model(mantle,crawlerMantle(),skin,[0,0,0],[1,1,1]);
+    const eye=crawlerEye(mantle,shell);
+
+    const strideTime=1.65, travelTime=strideTime*16;
+    const stance=.65, wrap=value=>THREE.MathUtils.euclideanModulo(value,1);
+    const land=new Vector3(), turn=new THREE.Quaternion();
+    const quarry=new Vector3();
+    function trailFrame(seconds) {
+      encounter.pose('crawler',seconds,land);
+      const phase=THREE.MathUtils.euclideanModulo(seconds,encounter.period);
+      const tracking=smoothstep(phase,3.0,4.65)*(1-smoothstep(phase,10.6,11.45));
+      if(!tracking) return land.z;
+      encounter.pose('scout',seconds,quarry);
+      const delta=quarry.x-land.x;
+      const bearing=Math.atan2(Math.sin(delta)*Math.cos(quarry.y),
+        Math.cos(quarry.y)*Math.sin(land.y)*Math.cos(delta)-Math.cos(land.y)*Math.sin(quarry.y));
+      return land.z+tracking*(THREE.MathUtils.euclideanModulo(bearing-land.z+Math.PI,tau)-Math.PI);
+    }
+    function plant(seconds,angle,reach,target) {
+      const yaw=trailFrame(seconds);
+      turn.copy(Land.frame(land.x,land.y).rotation);
+      return target.set(Math.sin(angle+yaw)*reach,0,Math.cos(angle+yaw)*reach)
+        .applyQuaternion(turn).addScaledVector(Land.direction(land.x,land.y),3.04).normalize();
+    }
+
+    const rings=32, sides=10, gripRing=19;
+    const armPaint=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.88});
+    const cups=new THREE.InstancedMesh(new THREE.TorusGeometry(1,.23,4,9),
+      new THREE.MeshStandardMaterial({color:'#e99470',roughness:.9}),24);
+    cups.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    cups.frustumCulled=false;
+    base.add(cups);
+    const arms=Array.from({length:8},(_,i)=>{
+      const positions=new Float32Array((rings+1)*sides*3), colors=[],indices=[];
+      const blue=new Color(i%2===0?'#477fbe':'#5188c6'), red=new Color(i%2===0?'#f45132':'#ef5236');
+      for(let k=0;k<=rings;k++) {
+        for(let j=0;j<sides;j++) {
+          const underside=1-smoothstep(Math.sin(j*tau/sides),-.065,.42);
+          colors.push(...blue.clone().lerp(red,underside).toArray());
+          if(k===rings) continue;
+          const a=k*sides+j, b=k*sides+(j+1)%sides;
+          indices.push(a,b,a+sides,b,b+sides,a+sides);
+        }
+      }
+      const geometry=new THREE.BufferGeometry();
+      geometry.setAttribute('position',new THREE.BufferAttribute(positions,3).setUsage(THREE.DynamicDrawUsage));
+      geometry.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+      geometry.setIndex(indices);
+      const mesh=new Mesh(geometry,armPaint);
+      mesh.castShadow=mesh.receiveShadow=true;
+      mesh.frustumCulled=false;
+      base.add(mesh);
+      // Leave a gap between the two forward arms.
+      const angle=[.94,1.56,2.23,2.82,3.43,4.08,4.73,5.34][i];
+      return {geometry,angle,reach:.77+.16*Math.sin(angle+.5)**2,
+        phase:[0,.52,.21,.76,.08,.61,.31,.87][i],curl:i%2===0?1:-1,
+        coil:[5.9,1.8,3.1,5.3,2.15,5.7,1.6,3.5][i],stride:travelTime/[15,18,16,14,17,16,15,18][i],
+        plantedStep:null, planted:new Vector3(), landing:new Vector3(),
+        centers:Array.from({length:rings+1},()=>new Vector3())};
+    });
+    const inverse=new THREE.Quaternion(), foot=new Vector3(), groundNormal=new Vector3();
+    const radial=new Vector3(), tangent=new Vector3(), sideways=new Vector3(), crossUp=new Vector3();
+    const cup=new THREE.Object3D(), cupAxis=new Vector3(0,0,1);
+
+    const animate=seconds=>{
+      const clock=seconds;
+      const yaw=trailFrame(clock);
+      terrain.put(base,land.x,land.y,.014,yaw);
+      inverse.copy(base.quaternion).invert();
+      const pulse=Math.sin(seconds*tau/strideTime);
+      const phase=seconds%encounter.period;
+      const alert=smoothstep(phase,3.0,4.1)*(1-smoothstep(phase,4.8,5.8));
+      const recoil=smoothstep(phase,10.6,10.75)*(1-smoothstep(phase,10.9,11.6));
+      mantle.position.y=.029*pulse+.08*alert-.15*recoil;
+      mantle.rotation.z=.043*Math.sin(seconds*tau/(2*strideTime));
+      mantle.rotation.x=.05+.033*pulse;
+      const blink=Math.pow(Math.max(0,Math.cos(seconds*1.08+3)),105);
+      eye.scale.y=1-.96*blink;
+      eye.position.z=.371-.055*blink;
+      eye.visible=blink<.95;
+
+      for(const [index,arm] of arms.entries()) {
+        const {angle,reach,phase,curl,coil,stride,centers,geometry}=arm;
+        const step=clock/stride+phase;
+        const progress=wrap(step);
+        const stepIndex=Math.floor(step);
+        if(arm.plantedStep!==stepIndex) {
+          const start=(stepIndex-phase+stance/2)*stride;
+          plant(start,angle,reach,arm.planted);
+          plant(start+stride,angle,reach,arm.landing);
+          arm.plantedStep=stepIndex;
+        }
+        const swing=smoothstep(progress,stance,1);
+        foot.copy(arm.planted).lerp(arm.landing,swing).normalize();
+        const lift=Math.sin(Math.PI*swing)*(.19+(index%3)*.055);
+        foot.multiplyScalar(terrain.meshRadius(foot)).sub(base.position).applyQuaternion(inverse);
+
+        const dx=Math.sin(angle), dz=Math.cos(angle);
+        for(let k=0;k<=rings;k++) {
+          const u=k/rings, extension=Math.min(k/gripRing,1), tip=Math.max(0,(k-gripRing)/(rings-gripRing));
+          const wave=Math.sin(step*tau-extension*3.1);
+          const bend=curl*(.082+.087*wave)*Math.sin(Math.PI*extension);
+          const theta=tip*(coil+(.57+.24*tip)*Math.sin(step*tau-1.2*tip));
+          const radius=.133+.072*(coil/6), taper=1-.52*tip;
+          const reachTip=radius*taper*Math.sin(theta), roll=radius*(1-taper*Math.cos(theta));
+          const x=lerp(dx*.085+.01,foot.x,extension)+dz*(bend+curl*.39*roll)+dx*reachTip;
+          const z=lerp(dz*.085+.032,foot.z,extension)-dx*(bend+curl*.39*roll)+dz*reachTip;
+          groundNormal.set(x,foot.y*extension,z).applyQuaternion(base.quaternion).add(base.position).normalize();
+          const center=centers[k];
+          center.copy(groundNormal).multiplyScalar(terrain.meshRadius(groundNormal)).sub(base.position).applyQuaternion(inverse);
+          const shoulder=1-smoothstep(extension,.10,.97);
+          const rootHeight=.202+.016*Math.cos(angle)+mantle.position.y;
+          const ripple=.11*wave*Math.sin(Math.PI*extension);
+          const pad=(.16*(1-u)**.68+.010)*.78+.008;
+          center.y+=Math.max(0,(rootHeight-center.y)*shoulder+ripple)+pad+lift*extension+.92*roll;
+        }
+
+        const positions=geometry.getAttribute('position');
+        for(let k=0;k<=rings;k++) {
+          const u=k/rings, center=centers[k], width=.16*(1-u)**.68+.010;
+          const twist=curl*(.24+.88*smoothstep(u,.53,.95));
+          tangent.subVectors(centers[Math.min(k+1,rings)],centers[Math.max(0,k-1)]).normalize();
+          sideways.set(dz,0,-dx);
+          sideways.addScaledVector(tangent,-sideways.dot(tangent)).normalize();
+          crossUp.crossVectors(tangent,sideways);
+          for(let j=0;j<sides;j++) {
+            const azimuth=j*tau/sides+twist;
+            radial.copy(center).addScaledVector(sideways,width*Math.cos(azimuth))
+              .addScaledVector(crossUp,width*.76*Math.sin(azimuth));
+            radial.applyQuaternion(base.quaternion).add(base.position);
+            groundNormal.copy(radial).normalize();
+            const floor=terrain.meshRadius(groundNormal)+.004;
+            if(radial.lengthSq()<floor*floor) radial.copy(groundNormal).multiplyScalar(floor);
+            radial.sub(base.position).applyQuaternion(inverse);
+            positions.setXYZ(k*sides+j,radial.x,radial.y,radial.z);
+          }
+          if(k!==12 && k!==15 && k!==18) continue;
+          const undersideAngle=-Math.PI/2+curl*.79+twist;
+          radial.copy(sideways).multiplyScalar(Math.cos(undersideAngle)).addScaledVector(crossUp,Math.sin(undersideAngle));
+          cup.position.copy(center).addScaledVector(radial,width*.91);
+          cup.quaternion.setFromUnitVectors(cupAxis,radial);
+          cup.scale.setScalar(.033*(1-u)+.012);
+          cup.updateMatrix();
+          cups.setMatrixAt(index*3+(k-12)/3,cup.matrix);
+        }
+        positions.needsUpdate=true;
+        geometry.computeVertexNormals();
+      }
+      cups.instanceMatrix.needsUpdate=true;
+    };
+    return {base,mantle,animate};
+  }
+
+  function sporeOrbiter(world) {
+    const flyer=new Group();
+    flyer.name='Космонавт с пробитым баллоном';
+    world.add(flyer);
+    const person=Inhabitants.resident(flyer,'traveler',1.08);
+    person.base.position.y=-.36;
+    // The floating figure has no ground shadow disc.
+    for(const item of person.base.children) if(item.isMesh) item.visible=false;
+    for(const item of person.head.children) item.visible=false;
+    model(person.head,'round','#d0e5e2',[0,.020,.003],[.149,.151,.144]);
+    model(person.head,'round','#293d56',[0,.032,.102],[.122,.102,.073]);
+    model(person.head,'tiny','#93d9df',[-.049,.078,.157],[.041,.014,.012],[0,0,.23]);
+    model(person.torso,'box','#d9ddd1',[0,.333,.083],[.145,.106,.031]);
+    model(person.torso,'box','#cd735e',[.016,.340,.101],[.066,.017,.010]);
+
+    const tank=new Group();
+    tank.position.set(-.025,.008,-.15);
+    flyer.add(tank);
+    const tankShape=lathe([[0,-.157],[.056,-.154],[.080,-.119],[.083,.116],[.063,.153],[0,.160]],10);
+    model(tank,tankShape,'#adc8c8',[0,0,0],[1,1,1]);
+    const band=new THREE.CylinderGeometry(.085,.085,.030,10);
+    for(const y of [-.089,.087]) model(tank,band,'#c86859',[0,y,0],[1,1,1]);
+    model(tank,'box','#597780',[0,.028,.069],[.121,.174,.068]);
+    const tear=new Vector3(-.062,-.063,-.051);
+    const leakDir=new Vector3(-.58,-.63,-.52).normalize();
+    const socket=model(tank,'round','#354956',tear.toArray(),[.031,.014,.030]);
+    socket.quaternion.setFromUnitVectors(new Vector3(0,1,0),leakDir);
+    const nozzle=tank.position.clone().add(tear).addScaledVector(leakDir,.010);
+
+    // The crack follows the curved visor. Its lower fork is also the point the glove tries to seal.
+    function onVisor(x,y) {
+      return new Vector3(x,.032+y,.106+.073*Math.sqrt(Math.max(0,1-(x/.122)**2-(y/.102)**2)));
+    }
+    const fracture=onVisor(.066,-.054);
+    const frost=new THREE.MeshBasicMaterial({color:'#c2e3df'});
+    for(const branch of [
+      [[.066,-.054],[.040,-.018],[.058,-.004],[.021,.033],[.024,.066]],
+      [[.040,-.018],[.001,-.009],[-.016,.012]],
+      [[.058,-.004],[.078,.012],[.089,.008]]
+    ]) {
+      const points=branch.map(([x,y])=>onVisor(x,y));
+      for(let k=1;k<points.length;k++) {
+        const start=points[k-1],end=points[k],delta=end.clone().sub(start);
+        const line=model(person.head,'stem',frost,start.clone().lerp(end,.5).toArray(),
+          [.004,delta.length(),.004]);
+        line.quaternion.setFromUnitVectors(new Vector3(0,1,0),delta.normalize());line.castShadow=false;
+      }
+    }
+    const mistPaint=new THREE.MeshBasicMaterial({color:'#d2eff3',transparent:true,depthWrite:false});
+    const mist=model(person.head,new THREE.ConeGeometry(1,1,7,1,true).translate(0,-.5,0),
+      mistPaint,fracture.toArray(),[1,1,1]);
+    const down=new Vector3(0,-1,0),up=new Vector3(0,1,0);
+    mist.name='Утечка у визора';mist.castShadow=false;
+    mist.quaternion.setFromUnitVectors(down,new Vector3(.81,-.19,.55).normalize());
+
+    const rightHand=person.hands[1],rightArm=rightHand.parent,shoulder=rightArm.position.clone();
+    const upperLength=.105,foreLength=.105,elbow=new Group();
+    elbow.position.y=-upperLength;rightArm.add(elbow);
+    elbow.add(rightHand);rightHand.position.set(0,-foreLength,0);
+    model(elbow,'round','#668d91',[0,-.045,.003],[.035,.061,.038]);
+    model(elbow,'box','#c67260',[0,-.079,.003],[.062,.020,.064]);
+    const aim=new Vector3(),bend=new Vector3(),joint=new Vector3(),lower=new Vector3();
+    const upperRotation=new THREE.Quaternion(),lowerRotation=new THREE.Quaternion();
+
+    // The loose hose has a fixed length. Successive sections pick up a jolt later than the root.
+    const hose=new Group();hose.name='Оборванный шланг';tank.add(hose);
+    hose.position.set(.066,.102,-.039);
+    const sections=12,links=[],hoseEnd=new Vector3(),along=new Vector3();
+    const rubber=new THREE.CylinderGeometry(.014,.014,1,7);
+    for(let j=0;j<sections;j++) links.push(model(hose,rubber,j===1 || j===8?'#dfb28f':'#69828a',
+      [0,0,0],[1,1,1]));
+    const coupling=model(hose,new THREE.CylinderGeometry(.027,.023,.046,8),'#e7ae80',[0,0,0],[1,1,1]);
+    model(coupling,'round','#334750',[0,.019,0],[.012,.003,.012]);
+    const surge=t=>{
+      const phase=THREE.MathUtils.euclideanModulo(t,12);
+      return smoothstep(phase,.12,.53)*(1-smoothstep(phase,1.5,2.5))+
+        .64*smoothstep(phase,5.82,6.13)*(1-smoothstep(phase,6.5,7.24));
+    };
+
+    // The same flight clock drives the body and the gas emitted at earlier instants.
+    const period=108,samples=2160,dt=period/samples;
+    function path(t,out) {
+      const a=t*tau/period;
+      const slip=.034*Math.sin(9*a-.6)+.018*Math.sin(18*a-1.2);
+      const lon=3*a+.32*Math.sin(4*a)+.15*Math.sin(7*a)+.47+slip;
+      const lat=.78*Math.sin(3*a+.72)+.30*Math.sin(2*a+.28)+.8*slip;
+      const radius=4.69+.15*Math.sin(5*a-.8)+.09*Math.sin(8*a+.4);
+      return out.set(Math.cos(lat)*Math.sin(lon),Math.sin(lat),Math.cos(lat)*Math.cos(lon)).multiplyScalar(radius);
+    }
+    const track=[],matrix=new THREE.Matrix4(),tilt=new THREE.Euler(0,0,0,'YXZ');
+    const x=new Vector3(),y=new Vector3(),z=new Vector3(),other=new Vector3();
+    for(let i=0;i<samples;i++) {
+      const t=i*dt,a=t*tau/period,pos=path(t,new Vector3());
+      const vel=path(t+.01,new Vector3()).sub(path(t-.01,other)).multiplyScalar(50);
+      y.copy(vel).normalize();
+      x.crossVectors(y,z.copy(pos).normalize()).normalize();z.crossVectors(x,y);
+      const rotation=new THREE.Quaternion().setFromRotationMatrix(matrix.makeBasis(x,y,z));
+      // A side leak rolls the backpack around the flight axis, with occasional end-over-end tumbles.
+      tilt.set(.45*Math.sin(7*a)+tau*smoothstep((t%36)/36,.54,.85),
+        10*a+.58*Math.sin(8*a)+.54*Math.sin(9*a-.55),
+        .41*Math.sin(6*a+.6)+.52*surge(t),'YXZ');
+      rotation.multiply(new THREE.Quaternion().setFromEuler(tilt));
+      const pressure=.14+.76*surge(t)+.10*(.5+.5*Math.sin(8*a));
+      track.push({pos,rotation,source:nozzle.clone().applyQuaternion(rotation).add(pos),
+        drift:leakDir.clone().applyQuaternion(rotation).multiplyScalar(1.45+.72*pressure).add(vel),pressure});
+    }
+    // A translucent tube starts at the tear. Older sections widen and fade in the direction
+    // the gas was moving when it escaped, even after the backpack has turned away.
+    const rings=19,sides=7,geo=new THREE.BufferGeometry(),indices=[];
+    const coords=new THREE.Float32BufferAttribute(new Float32Array(rings*sides*3),3);
+    coords.setUsage(THREE.DynamicDrawUsage);
+    const colors=[],strength=new Float32Array(rings),centers=Array.from({length:rings},()=>new Vector3());
+    const tint=new Color('#c1f4f0'),ice=new Color('#8ac1d7');
+    for(let j=0;j<rings;j++) {
+      const u=j/(rings-1),c=tint.clone().lerp(ice,u);
+      for(let k=0;k<sides;k++) {
+        colors.push(c.r,c.g,c.b,.79*(1-u)**1.55);
+        if(j+1===rings) continue;
+        const a=j*sides+k,b=j*sides+(k+1)%sides;
+        indices.push(a,b,a+sides,b,b+sides,a+sides);
+      }
+    }
+    const jetColors=new THREE.Float32BufferAttribute(colors,4).setUsage(THREE.DynamicDrawUsage);
+    geo.setAttribute('position',coords);geo.setAttribute('color',jetColors);geo.setIndex(indices);
+    const jet=new Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:false,side:THREE.DoubleSide}));
+    jet.name='Струя кислорода';jet.frustumCulled=false;
+    world.add(jet);
+    const angles=Array.from({length:sides},(_,k)=>[Math.cos(tau*k/sides),Math.sin(tau*k/sides)]);
+    const velocity=new Vector3(),ringPoint=new Vector3();
+    return seconds=>{
+      const frame=THREE.MathUtils.euclideanModulo(seconds,period)/dt;
+      const i=Math.floor(frame)%samples,a=track[i],b=track[(i+1)%samples],mix=frame-Math.floor(frame);
+      flyer.position.copy(a.pos).lerp(b.pos,mix);
+      flyer.quaternion.copy(a.rotation).slerp(b.rotation,mix);
+      const phase=THREE.MathUtils.euclideanModulo(seconds,12);
+      const cover=smoothstep(phase,2.0,2.92)*(1-smoothstep(phase,5.76,6.12));
+      const kick=surge(seconds);
+      person.pose(seconds*.35,.20+.66*kick,.31,0,{seated:.23+.22*kick,leftReach:.45+.38*kick,
+        lookDown:.20*cover,lookAside:.32*cover+.20*Math.sin(seconds*.73),
+        leftRoll:-.83-.48*Math.sin(seconds*1.08)-.39*kick,rightRoll:1+.47*Math.cos(seconds*.91)});
+      rightArm.position.set(shoulder.x,shoulder.y+.012*cover,shoulder.z+.014*cover);
+      elbow.quaternion.identity();
+      if(cover>0) {
+        person.head.localToWorld(aim.copy(fracture));
+        rightArm.parent.worldToLocal(aim).sub(rightArm.position);
+        const distance=Math.min(aim.length(),upperLength+foreLength-.0001);
+        aim.normalize();
+        // Place the elbow outboard while the glove stays on the turning visor.
+        bend.set(1,0,0).addScaledVector(aim,-aim.x).normalize();
+        const reach=(distance**2+upperLength**2-foreLength**2)/(2*distance);
+        joint.copy(aim).multiplyScalar(reach).addScaledVector(bend,Math.sqrt(Math.max(0,upperLength**2-reach**2)));
+        lower.copy(aim).multiplyScalar(distance).sub(joint).normalize();
+        upperRotation.setFromUnitVectors(down,joint.normalize());
+        lowerRotation.copy(upperRotation).invert();
+        lower.applyQuaternion(lowerRotation);
+        lowerRotation.setFromUnitVectors(down,lower);
+        rightArm.quaternion.slerp(upperRotation,cover);
+        elbow.quaternion.slerp(lowerRotation,cover);
+      }
+      const hiss=(.45+.55*(.5+.5*Math.sin(seconds*8))**2)*(1-cover);
+      mist.visible=hiss>.02;
+      mist.scale.set(.016+.017*hiss,.07+.23*hiss,.016+.017*hiss);
+      mistPaint.opacity=.08+.27*hiss;
+      hoseEnd.set(0,0,0);
+      for(let j=0;j<sections;j++) {
+        const u=(j+.5)/sections,lag=seconds-.40*u;
+        const whip=surge(lag)*Math.sin(8*lag-3*u);
+        along.set(.62-.76*u+1.25*u*Math.sin(2.2*lag-2.7*u),
+          .22-1.05*u+1.12*u*Math.sin(2.8*lag-2.2*u)+1.05*u*whip,
+          -.98+.20*Math.cos(lag*2.1+u*3)).normalize();
+        const link=links[j],length=.049;
+        link.position.copy(hoseEnd).addScaledVector(along,length*.5);
+        link.scale.y=length+.005;
+        link.quaternion.setFromUnitVectors(up,along);
+        hoseEnd.addScaledVector(along,length);
+      }
+      coupling.position.copy(hoseEnd);coupling.quaternion.copy(links[sections-1].quaternion);
+      for(let j=0;j<rings;j++) {
+        const u=j/(rings-1),age=.62*u;
+        const past=THREE.MathUtils.euclideanModulo(frame-age/dt,samples);
+        const idx=Math.floor(past)%samples,start=track[idx],end=track[(idx+1)%samples],fraction=past-Math.floor(past);
+        strength[j]=lerp(start.pressure,end.pressure,fraction);
+        centers[j].copy(start.source).lerp(end.source,fraction)
+          .addScaledVector(velocity.copy(start.drift).lerp(end.drift,fraction),age);
+      }
+      centers[0].copy(nozzle).applyQuaternion(flyer.quaternion).add(flyer.position);
+      for(let j=0;j<rings;j++) {
+        y.subVectors(centers[Math.min(j+1,rings-1)],centers[Math.max(0,j-1)]).normalize();
+        if(j===0) x.set(Math.abs(y.x)<.8?1:0,Math.abs(y.x)<.8?0:1,0);
+        z.crossVectors(x,y).normalize();x.crossVectors(y,z);
+        const u=j/(rings-1),width=(.011+.065*u)*(.60+.65*strength[j]);
+        for(let k=0;k<sides;k++) {
+          ringPoint.copy(centers[j]).addScaledVector(x,angles[k][0]*width).addScaledVector(z,angles[k][1]*width);
+          coords.setXYZ(j*sides+k,ringPoint.x,ringPoint.y,ringPoint.z);
+          jetColors.setW(j*sides+k,(.19+.71*strength[j])*(1-u)**1.55);
+        }
+      }
+      coords.needsUpdate=jetColors.needsUpdate=true;
+    };
   }
 
   function spore() {
@@ -8143,7 +9475,7 @@ const StoryWorlds = (() => {
     const pits=[[-.63,-.23,.16,42],[1.72,.39,.23,36],[-2.16,-.34,.26,31]].map(([lon,lat,depth,falloff]) =>
       ({ center:Land.direction(lon,lat),depth,falloff }));
     const sentinel=Land.direction(.50,.31);
-    const terrain=sphere(group,3.04,n=>{
+    function moonSoil(n) {
       const {x,y,z}=n;
       const ridge=.103*Math.sin(7.1*x-4*z+3*y)*Math.sin(6*y+4*z)+.057*Math.cos(13*z-5*x+1.6*y);
       const mineralSeam=Math.abs(y+.24*Math.sin(x*3.7+z*2.1)-.11*Math.sin(z*6-3*x));
@@ -8154,13 +9486,41 @@ const StoryWorlds = (() => {
       color.lerp(clay,.58*smoothstep(Math.sin(x*6-y*4+z*6),.22,1));
       color.lerp(basalt,clamp(hollow*2.05+mineralTint*.46,0,.68));
       return {height:ridge+rise-hollow+mineralTint*.046,color};
-    });
+    }
+
+    const berth=new Group();
+    const siteNormal=Land.direction(-.66,-.24);
+    berth.position.copy(siteNormal).multiplyScalar(3.04+moonSoil(siteNormal).height+.035);
+    berth.quaternion.copy(Land.frame(-.66,-.24).rotation);
+    berth.rotateY(.27);
+    group.add(berth);
+    const ship=new Group();
+    ship.name='Упавшая ракета';
+    const entryDirection=berth.localToWorld(new Vector3(-.53,0,-.35)).normalize();
+    const impact=berth.worldToLocal(entryDirection.clone().multiplyScalar(3.04+moonSoil(entryDirection).height-.095));
+    const noseTip=1.69;
+    ship.rotation.set(-.14,-.47,2.13);
+    ship.scale.set(.85,1,.85);
+    ship.position.copy(impact).sub(new Vector3(0,noseTip,0).applyQuaternion(ship.quaternion));
+    berth.add(ship);
+    const hinge=new Group();
+    hinge.name='Излом корпуса';
+    hinge.position.set(.043,.56,-.018);
+    hinge.rotation.z=.44;
+    ship.add(hinge);
+    const tail=new Group();
+    tail.position.y=-.56;
+    hinge.add(tail);
+    const nozzleExit=tail.localToWorld(new Vector3(0,-.18,0));
+    const cut=impactFurrow(entryDirection,nozzleExit.clone().normalize(),3.04);
+    const terrain=sphere(group,3.04,n=>cut.carve(n,moonSoil(n)),{lon:[-1.04,.19],lat:[-.53,.11],secondLat:[.91,Math.PI/2]});
 
     const cap=lathe([[0,.023],[.226,0],[.340,.027],[.349,.076],[.282,.169],[.174,.261],[0,.29]],15);
     const under=lathe([[0,0],[.245,.016],[.318,.031],[.327,.043]],15);
     const luminous=new THREE.MeshStandardMaterial({ color:'#9bdedb',emissive:'#69bbce',emissiveIntensity:.54,roughness:.70 });
     const crystalLight=new THREE.MeshStandardMaterial({ color:'#6ecbcc',emissive:'#4a96bc',emissiveIntensity:.43,roughness:.58,flatShading:true });
     const rootColors=['#885c8d','#6a729e','#b87091','#7c639b','#9a77a5'];
+    const obstacles=[];
     const caps=[
       [-.86,.45,1.26,-.22],[.55,.54,1.49,.19],[.87,.34,1.02,-.16],[-.99,.14,.81,.25],
       [1.91,-.32,1.29,.24],[2.36,.22,1.39,-.20],[-2.28,-.24,1.41,.22],[-1.72,.71,1.18,-.14],
@@ -8186,6 +9546,7 @@ const StoryWorlds = (() => {
           model(mushroom,'tiny',luminous,[Math.cos(a)*edge,height*.94+.035+(.303-edge)*.89,Math.sin(a)*edge],
             [.031+k%2*.009,.025,.032],[0,a,.13]);
         }
+        obstacles.push(sporeObstacle(mushroom));
       }
     }
 
@@ -8193,19 +9554,24 @@ const StoryWorlds = (() => {
       [.44,.13,.97],[.64,.06,.79],[-.48,.33,.77],[-.99,-.43,.63],[.18,-.57,.94],[-1.47,.21,.58],
       [2.17,.46,1.11],[-2.25,-.12,.92],[2.62,-.35,.83],[-2.60,.29,.69],[3.04,-.70,.78],[1.62,.83,.75]
     ];
-    for(const [i,[lon,lat,size]] of crystalSites.entries()) crystal(terrain.place(solid,lon,lat),size,i*.69,crystalLight);
+    for(const [i,[lon,lat,size]] of crystalSites.entries()) {
+      obstacles.push(sporeObstacle(crystal(terrain.place(solid,lon,lat),size,i*.69,crystalLight)));
+    }
 
     const leaves=['#786a9b','#627fa4','#ba7f9b','#6b98a6'];
     for(let i=0;i<105;i++) {
       const lon=(i*2.39996)%tau;
       const lat=Math.asin((i+.5)/52.5-1);
       if(Math.abs(Math.sin(lon+.1))<.52 && Math.cos(lon)>0 && Math.abs(lat+.09)<.25) continue;
-      const patch=terrain.place(solid,lon,lat,0,random()*tau);
+      const yaw=random()*tau;
       const size=.06+random()*.13;
+      const crownHeights=Array.from({length:3},()=>size*(.28+.36*random()));
+      if(cut.scraped(Land.direction(lon,lat))) continue;
+      const patch=terrain.place(solid,lon,lat,0,yaw);
       for(let j=0;j<3;j++) {
         const a=j*2.4;
         const c=Math.cos(a),s=Math.sin(a);
-        model(patch,'pebble',leaves[(i+j)%leaves.length],[size*c,.027,size*s],[size*.72,size*(.28+.36*random()),size*.81],[.3,a,.17]);
+        model(patch,'pebble',leaves[(i+j)%leaves.length],[size*c,.027,size*s],[size*.72,crownHeights[j],size*.81],[.3,a,.17]);
         if(i%4===0) {
           model(patch,'stem','#89608a',[size*c,size*.90,size*s],[.018,size*1.8,.018],[.23,0,c*.40]);
           model(patch,'tiny',j===1?luminous:'#d0a2c5',[size*c,size*1.70,size*s],[.032,.024,.032]);
@@ -8216,7 +9582,7 @@ const StoryWorlds = (() => {
     const stem=tube([[0,0,0],[.075,.17,.025],[-.059,.31,-.012],[.042,.53,.008]],.026);
     const lampSkin=lathe([[0,0],[.12,.045],[.166,.14],[.115,.25],[0,.29]],7);
     const bulbs=[
-      [-.94,-.23,.82],[.89,-.26,1.1],[-.45,.12,.68],[.16,.44,.7],
+      [-1.09,-.29,.82],[.89,-.26,1.1],[-.45,.12,.68],[.16,.44,.7],
       [1.8,.28,.89],[2.46,-.12,.91],[-2.27,-.42,1.22],[-1.58,.53,.87],[-2.84,.32,1.02]
     ];
     for(const [i,[lon,lat,size]] of bulbs.entries()) {
@@ -8241,6 +9607,7 @@ const StoryWorlds = (() => {
             [.059,.062,.021],[0,Math.PI/2-turn,.17]);
         }
       }
+      obstacles.push(sporeObstacle(plant));
     }
 
     const path=[[-.60,-.13],[-.40,-.105],[-.20,-.055],[.03,-.05],[.24,.03],[.36,.103]];
@@ -8248,46 +9615,110 @@ const StoryWorlds = (() => {
       const [a,b]=path[i], [c,d]=path[i+1];
       for(let j=0;j<4;j++) {
         const t=j/4;
-        const patch=terrain.place(solid,lerp(a,c,t),lerp(b,d,t)+(j%2===0?.023:-.017),.006);
-        model(patch,'pebble',j%2===0?'#8b6d8d':'#745b7b',[0,.012,0],[.128,.025,.081],[0,random()*tau,.07]);
+        const lon=lerp(a,c,t), lat=lerp(b,d,t)+(j%2===0?.023:-.017), yaw=random()*tau;
+        if(cut.scraped(Land.direction(lon,lat))) continue;
+        const patch=terrain.place(solid,lon,lat,.006);
+        model(patch,'pebble',j%2===0?'#8b6d8d':'#745b7b',[0,.012,0],[.128,.025,.081],[0,yaw,.07]);
       }
     }
     const arch=terrain.place(solid,-2.73,.08,0,.55);
     for(let i=0;i<7;i++) {
       const angle=.12+i*(Math.PI-.24)/6;
-      model(arch,'pebble',i%2===0?'#654b68':'#806080',[.65*Math.cos(angle),.73*Math.sin(angle),0],
+      const stone=model(arch,'pebble',i%2===0?'#654b68':'#806080',[.65*Math.cos(angle),.73*Math.sin(angle),0],
         [.26,.22,.24],[i*.17,0,angle]);
+      obstacles.push(sporeObstacle(stone));
     }
+    sporeGrowths(solid,terrain,obstacles);
     batchRepeatedParts(solid);
 
-    const berth=terrain.place(group,-.66,-.24,.035,.27);
     berth.name='Место падения';
     group.userData.coverView=coverView(berth,.86);
-    model(berth,shadow,lowShade,[0,.022,0],[.59,1,.49]);
-    const ship=new Group();
-    ship.name='Упавшая ракета';
-    ship.position.set(.19,.48,-.045);
-    group.userData.demoFocus=ship.position.clone().applyQuaternion(berth.quaternion).add(berth.position);
-    ship.rotation.set(-.14,-.47,2.02);
-    berth.add(ship);
-    const chassis=lathe([[0,.15],[.231,.15],[.29,.26],[.287,.61],[.229,.78],[.108,.87],[0,.89]],18);
-    model(ship,chassis,'#e6cec7',[0,0,0],[1,1,1]);
-    model(ship,lathe([[.239,.720],[.207,.798],[.109,.875],[0,.90]],18),'#d17a5b',[0,0,0],[1.065,1,1.065]);
-    model(ship,lathe([[.098,.055],[.147,.065],[.177,.167],[.231,.178]],10),'#716576',[0,0,0],[1,1,1]);
-    model(ship,'pebble','#3f3a50',[0,.072,0],[.102,.034,.102]);
-    model(ship,'round','#54546e',[0,.59,.243],[.182,.121,.073],[.25,0,0]);
-    model(ship,'round','#6fa8be',[0,.594,.294],[.143,.087,.035],[.25,0,0]);
-    model(ship,'tiny','#c6d7d7',[-.059,.633,.322],[.057,.022,.009],[0,0,.19]);
-    const signal=new THREE.MeshStandardMaterial({color:'#f8bf87',emissive:'#e79458',emissiveIntensity:.68,roughness:.65});
-    model(ship,'round',signal,[.193,.277,.217],[.041,.036,.027]);
-    for(let i=0;i<3;i++) {
-      const a=i*tau/3;
-      model(berth,'pebble','#8d6a79',[Math.cos(a)*.45,.005,Math.sin(a)*.45],[.197,.056,.126],[0,a,.13]);
-      model(ship,'box','#be735d',[Math.cos(a)*.258,.115,Math.sin(a)*.258],[.162,.094,.117],[0,-a,0]);
-      model(ship,'box','#ae685d',[Math.cos(a)*.289,.194,Math.sin(a)*.289],[.21,.089,.10],[.26,-a,-.61]);
+    group.userData.overviewView=coverView(berth,1.60,-.72);
+    function groundAt(x,z,lift=0) {
+      const direction=berth.localToWorld(new Vector3(x,0,z)).normalize();
+      return berth.worldToLocal(terrain.surfacePosition(direction,lift));
     }
+
+    const lilac=new Color('#aa87b5'), turquoise=new Color('#65c4be');
+    const vein=new THREE.MeshStandardMaterial({color:lilac,emissive:'#64cfc3',emissiveIntensity:.02,
+      side:THREE.DoubleSide,roughness:.51,flatShading:true});
+    // Three exposed faces of one seam, with soil left between them.
+    for(const [start,end,offset,halfWidth] of [[.15,.27,-.14,.029],[.32,.47,.13,.045],[.53,.66,-.14,.053]]) {
+      const rows=[];
+      for(let i=0;i<=10;i++) {
+        const f=i/10,t=lerp(start,end,f);
+        const center=offset+.047*Math.sin(23*t)+.018*Math.sin(56*t);
+        const width=halfWidth*(.08+.92*Math.min(f/.3,(1-f)/.7))*(.9+.1*Math.cos(i*1.4));
+        rows.push([-width,width].map(side=>{
+          return berth.worldToLocal(terrain.surfacePosition(cut.direction(t,center+side),.008));
+        }));
+      }
+      surfaceStrip(berth,rows,vein,'Скол кристаллической жилки');
+    }
+    group.userData.setNight=amount=>{
+      vein.color.copy(lilac).lerp(turquoise,amount);
+      vein.emissiveIntensity=lerp(.02,.78,amount);
+    };
+
+    group.userData.demoFocus=ship.localToWorld(new Vector3(0,.77,0));
+
+    const chassis=lathe([[0,.575],[.30,.575],[.396,.605],[.425,.69],[.425,1.04],[.396,1.16],[0,1.16]],12);
+    model(ship,chassis,'#d6d4dc',[0,0,0],[1,1,1]);
+    const nose=lathe([[.394,1.10],[.419,1.13],[.403,1.22],[.322,1.41],[.216,1.55],[.079,1.67],[0,noseTip]],12);
+    const cowling=model(ship,nose,'#d36e4e',[0,0,0],[1,1,1]);
+    const noseBand=lathe([[.418,1.10],[.429,1.12],[.423,1.166],[.407,1.19]],12);
+    model(ship,noseBand,'#884f48',[0,0,0],[1,1,1]);
+
+    // The nose and cabin are lodged together. The tail has buckled at the frame behind the window.
+    const frame=lathe([[0,.39],[.28,.39],[.30,.45],[.28,.62],[.29,.65],[0,.65]],10);
+    model(ship,frame,'#474353',[0,0,0],[1,1,1]);
+    const aftShell=lathe([[0,.155],[.302,.155],[.372,.245],[.389,.445],[.369,.49],[.295,.49],[0,.465]],10);
+    model(tail,aftShell,'#b9bac7',[0,0,0],[1,1,1]);
+    const engineCollar=lathe([[.199,.014],[.295,.014],[.348,.045],[.371,.095],[.367,.151],[.338,.19],[.342,.245]],12);
+    model(tail,engineCollar,'#626a80',[0,0,0],[1,1,1]);
+    const nozzle=lathe([[0,-.048],[.101,-.048],[.136,-.169],[.181,-.169],[.211,-.14],[.224,-.08],[.224,.039]],10);
+    model(tail,nozzle,'#3f455a',[0,0,0],[1,1,1]);
+    model(tail,new THREE.CircleGeometry(.102,10),'#272535',[0,-.05,0],[1,1,1],[Math.PI/2,0,0]);
+
+    const rim=lathe([[.226,-.077],[.251,-.011],[.251,.027],[.223,.057],[.176,.057],[.163,.022]],8);
+    model(ship,rim,'#44495e',[0,.86,.429],[1,.98,.85],[Math.PI/2,0,0]);
+    const glass=lathe([[.173,.007],[.16,.027],[.105,.049],[0,.055]],8);
+    const smokedGlass=new THREE.MeshStandardMaterial({color:'#53748a',roughness:.34,flatShading:true});
+    model(ship,glass,smokedGlass,[0,.86,.438],[1,.98,.85],[Math.PI/2,0,0]);
+
+    const finProfile=new THREE.Shape();
+    finProfile.moveTo(.295,.15);
+    finProfile.lineTo(.594,.12);
+    finProfile.lineTo(.645,.183);
+    finProfile.lineTo(.409,.515);
+    finProfile.lineTo(.306,.544);
+    finProfile.closePath();
+    const fin=new THREE.ExtrudeGeometry(finProfile,{depth:.061,bevelThickness:.015,bevelSize:.016,bevelSegments:2,steps:1});
+    fin.translate(0,0,-.0305);
+    const signal=new THREE.MeshStandardMaterial({color:'#f8bf87',emissive:'#e79458',emissiveIntensity:.68,roughness:.65});
+    model(ship,'round',signal,[.244,1.015,.346],[.046,.037,.026]);
+    for(let i=0;i<3;i++) {
+      const angle=i*tau/3;
+      model(tail,fin,'#c1644e',[0,0,0],[1,1,1],[0,angle,0]);
+    }
+    const rock=new THREE.IcosahedronGeometry(1,0);
+    const rockColors=['#63536e','#846e88','#4e425c'];
+    // The largest blocks flank the point of entry, with chips pushed out ahead of it.
+    const rubble=[
+      [-.23,.04,.24,.19,.16],[-.10,-.20,.20,.13,.22],[.15,-.19,.17,.16,.15],
+      [.16,.17,.18,.14,.13],[-.055,.225,.19,.18,.15],[-.285,.22,.135,.10,.13],
+      [-.40,-.11,.12,.080,.10],[-.48,.13,.085,.065,.085],[-.32,-.26,.075,.063,.095],
+      [.29,.065,.086,.065,.078],[-.17,.38,.072,.055,.084]
+    ];
+    for(const [i,[x,z,width,height,depth]] of rubble.entries()) {
+      const position=groundAt(impact.x+x,impact.z+z,height*.32);
+      const block=model(berth,rock,rockColors[i%3],position.toArray(),[width,height,depth],[i*.73,i*1.71,i*.41]);
+      if(i===4) scrapeAtContact(berth,cowling,block);
+    }
+    obstacles.push(sporeObstacle(berth));
     batchRepeatedParts(berth);
-    const vent=berth.worldToLocal(ship.localToWorld(new Vector3(0,.044,0)));
+    const vent=berth.worldToLocal(nozzleExit);
+    const animateShortCircuit=rocketShortCircuit(ship,berth);
     const smoke=Array.from({length:8},(_,i)=>{
       const material=new THREE.MeshBasicMaterial({
         color:i%2===0?'#c0a5ba':'#d1b7c4',transparent:true,opacity:0,depthWrite:false
@@ -8306,6 +9737,8 @@ const StoryWorlds = (() => {
     model(scout.head,'tiny','#b4c9e0',[-.036,.063,.172],[.041,.017,.011],[0,0,.19]);
     model(scout.torso,'box','#bb7a6f',[0,.33,-.108],[.167,.193,.089]);
     const scanner=new Group();
+    const scannerArm=scout.hands[1].parent;
+    scannerArm.rotation.order='YXZ';
     scout.hands[1].add(scanner);
     scanner.position.set(0,0,.055);
     model(scanner,'box','#817287',[0,0,.034],[.074,.062,.124]);
@@ -8332,29 +9765,68 @@ const StoryWorlds = (() => {
     }
     model(visitor,hook,'#728bb6',[0,.286,-.036],[.75,.75,.75],[.30,.3,1.17]);
 
+    const animateOrbiter=sporeOrbiter(group);
+    const animateDuel=SporeDuel.create(group,terrain,terrain.geometry,obstacles);
+    const encounter=sporeEncounter(obstacles);
+    const crawler=sporeCrawler(group,terrain,encounter);
+    const scoutPose=new Vector3(), source=new Vector3(), target=new Vector3(), shotDirection=new Vector3();
+    const upAxis=new Vector3(0,1,0);
+    const pulsePaint=new THREE.MeshBasicMaterial({color:0xb9fffb,toneMapped:false});
+    const pulse=model(group,new THREE.CylinderGeometry(.020,.020,1,8),pulsePaint,[0,0,0],[1,1,1]);
+    pulse.name='Импульс сканера';
+    pulse.castShadow=false;
+    const flash=model(group,'tiny',pulsePaint,[0,0,0],[.068,.068,.068]);
+    flash.castShadow=false;
+    group.userData.encounterView=new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().lookAt(new Vector3(.10,1,.71),new Vector3(),new Vector3(0,1,0)));
+
     const driftDirection=new Vector3();
     const sparks=Array.from({length:12},(_,i)=>({
       mote:model(group,'tiny',luminous,[0,0,0],[.019,.019,.019]),
       point:Land.direction(crystalSites[i][0],crystalSites[i][1])
     }));
-    const walk=[
-      [0,-.50,-.112,1.42],[2,-.50,-.112,1.34],[5.4,-.36,-.091,1.74],[8.4,-.06,-.054,1.89],
-      [11.5,.31,.039,.91],[16.5,.31,.039,.85],[19.3,.26,.08,2.61],[23.6,-.08,-.04,-1.34],
-      [28.5,-.50,-.112,-1.70],[31,-.50,-.112,1.42]
-    ];
     const wander=[[0,.71,.34,-1.8],[11,.71,.34,-1.8],[15.2,.48,.19,-1.1],[18,.368,.097,-2.0],
       [21,.368,.097,-2.0],[24.8,.58,.15,.73],[30,.71,.34,2.9],[31,.71,.34,-1.8]];
     group.userData.animate=seconds=>{
+      animateOrbiter(seconds);
+      animateDuel(seconds);
       const t=seconds%31;
-      const {lon,lat,yaw,pace}=trailPose(walk,t);
-      const read=smoothstep(t,11.28,12.28)-smoothstep(t,15.68,16.60);
-      terrain.put(scout.base,lon,lat,.008,yaw);
-      scout.pose(seconds,pace,.23+read*.83,0,{ lookDown:read*.16,lean:read*.075 });
-      scanner.rotation.x=.1+read*.30;
+      const phase=seconds%encounter.period;
+      crawler.animate(seconds);
+      encounter.pose('scout',seconds,scoutPose);
+      const glance=smoothstep(phase,2.1,2.85)*(1-smoothstep(phase,4.75,5.45));
+      const run=smoothstep(phase,4.75,5.65)*(1-smoothstep(phase,13,17));
+      const read=smoothstep(phase,25,27)*(1-smoothstep(phase,34,37));
+      const aim=smoothstep(phase,9.4,10.4)*(1-smoothstep(phase,12.8,13.8));
+      terrain.put(scout.base,scoutPose.x,scoutPose.y,.008,scoutPose.z);
+      // Look over the shoulder while the feet still point along the original trail.
+      const threat=scout.base.worldToLocal(crawler.base.getWorldPosition(target));
+      const shoulderTurn=clamp(Math.atan2(threat.x,threat.z),-1.8,1.8);
+      scout.pose(seconds*1.3,lerp(.47,1.28,run)*(1-read)*(1-.70*glance),.22+read*.84+aim*.95,0,
+        {lookDown:read*.16,lean:run*.15,lookAside:glance*shoulderTurn*.82+aim*1.3});
+      scout.torso.rotation.y=glance*shoulderTurn*.32+aim*1.1;
+      scannerArm.rotation.y=aim*2.45;
+      scanner.rotation.set(.10+read*.30,0,0);
+      pulse.visible=flash.visible=false;
+      if(aim>0) {
+        group.worldToLocal(crawler.mantle.localToWorld(target.set(0,.85,.05)));
+        scanner.lookAt(group.localToWorld(source.copy(target)));
+        group.worldToLocal(scanner.localToWorld(source.set(0,0,.118)));
+        const age=phase-10.6;
+        if(age>=0 && age<1.8 && age%.75<.20) {
+          shotDirection.subVectors(target,source);
+          pulse.position.copy(source).lerp(target,.5);
+          pulse.scale.y=shotDirection.length();
+          pulse.quaternion.setFromUnitVectors(upAxis,shotDirection.normalize());
+          flash.position.copy(source);
+          pulse.visible=flash.visible=true;
+        }
+      }
       beam.visible=read>.10;
       scanMaterial.opacity=read*(.10+.05*Math.sin(seconds*11));
       crystalLight.emissiveIntensity=.43+read*.53;
       signal.emissiveIntensity=.63+.27*Math.sin(seconds*3.7);
+      animateShortCircuit(seconds);
       for(const [i,puff] of smoke.entries()) {
         const age=(seconds*.37+i/smoke.length)%1;
         const drift=.12+.37*age;
@@ -9167,15 +10639,24 @@ const Cosmos=(()=>{
       return {yaw:entry.id==='belt'?-.12:0,elevation,zoom:0,shot:0,roll:0};
     }
 
+    function setStoryOverview(entry,orbit) {
+      const view=entry.body.userData.overviewView;
+      if(view) {
+        storyGoal.copy(entry.body.quaternion).multiply(view);
+      } else {
+        orbitalEye(stageDirection,origin,orbit,1);
+        storyGoal.setFromRotationMatrix(tiltMatrix.lookAt(stageDirection,origin,up));
+      }
+    }
+
     function prepareWorld(entry) {
       loadBody(entry);
       Object.assign(localOrbit,defaultOrbit(entry));
       if(entry.story) {
         entry.motionTime=0;
         entry.body.userData.resetScenes?.();
-        orbitalEye(endEye,origin,localOrbit,1);
-        storyView.setFromRotationMatrix(tiltMatrix.lookAt(endEye,origin,up));
-        storyGoal.copy(storyView);
+        setStoryOverview(entry,localOrbit);
+        storyView.copy(storyGoal);
       }
       Object.assign(localTarget,localOrbit);
     }
@@ -9204,13 +10685,32 @@ const Cosmos=(()=>{
       coverDeparture=null;
     }
 
+    function sporePreviewState() {
+      if(focused?.id!=='spore') return null;
+      return {orientation:storyGoal.toArray(),zoom:localTarget.zoom,roll:localTarget.roll,time:focused.motionTime};
+    }
+
+    function restoreSporePreview(saved) {
+      if(focused?.id!=='spore') return;
+      if(saved?.orientation?.length===4 && saved.orientation.every(Number.isFinite)
+          && [saved.zoom,saved.roll,saved.time].every(Number.isFinite)) {
+        storyGoal.fromArray(saved.orientation).normalize();
+        localTarget.zoom=clamp(saved.zoom,worldMinZoom,maxZoom());
+        localTarget.roll=saved.roll;
+        focused.motionTime=Math.max(0,saved.time);
+      } else {
+        storyGoal.copy(focused.body.quaternion).multiply(focused.body.userData.encounterView);
+        localTarget.zoom=.30;
+      }
+      Object.assign(localOrbit,localTarget);
+      storyView.copy(storyGoal);
+      wake();
+    }
+
     function resetFocused() {
       if(!focused || journey) return;
       Object.assign(localTarget,defaultOrbit(focused));
-      if(focused.story) {
-        orbitalEye(stageDirection,origin,localTarget,1);
-        storyGoal.setFromRotationMatrix(tiltMatrix.lookAt(stageDirection,origin,up));
-      }
+      if(focused.story) setStoryOverview(focused,localTarget);
     }
 
     function resetZoom() {
@@ -9444,6 +10944,7 @@ const Cosmos=(()=>{
     function lightWorld(renderer,entry,atmosphere,surroundings,night) {
       const dusk=entry?.id==='duel' ? atmosphere : 0;
       const dark=night*atmosphere;
+      entry?.body.userData.setNight?.(dark);
       sky.intensity=lerp(1.48,1.10,dusk)*lerp(1,.71,dark);
       sky.color.copy(warmSky).lerp(nightSky,dusk);
       key.intensity=(lerp(2.35,.97,dusk)-.28*surroundings)*lerp(1,.61,dark);
@@ -9717,7 +11218,7 @@ const Cosmos=(()=>{
       ctx.putImageData(image,0,0);
     }
 
-    return {resize,render,launch,focusWorld,preloadWorld,prepareGalleryWorld,warmCoverWorld,showcaseWorld,renderShowcaseDeparture,finishShowcaseTransition,resetZoom,
+    return {resize,render,launch,focusWorld,sporePreviewState,restoreSporePreview,preloadWorld,prepareGalleryWorld,warmCoverWorld,showcaseWorld,renderShowcaseDeparture,finishShowcaseTransition,resetZoom,
       resetFocused,back,fromSurface,orbit,scale,canZoomWorld,name,flying,isClose,cancel,atmosphere,hasAnimation,hasRapidMotion,needsFrame,wake,watchArena,arenaShot,drawThumbnail};
   }
 
@@ -9816,7 +11317,9 @@ const Cosmos=(()=>{
 
   const coverWorld = 'duel';
   const coverSequence = [coverWorld,'rose','spore'];
-  const requested = address.get('planet');
+  const localPreview=['localhost','127.0.0.1','[::1]'].includes(location.hostname)
+    && location.pathname.startsWith('/.atlas-preview/');
+  const requested = address.get('planet') || (localPreview ? 'spore' : null);
   const minSurfaceZoom=standalone?Cosmos.worldMinZoom:0;
   const firstWorld = Cosmos.worlds.find(({id})=>id===requested)?.id ?? coverWorld;
   let layout = standalone ? 'planets' : requestedLayout;
@@ -11042,5 +12545,22 @@ const Cosmos=(()=>{
   setTime(nightTarget ? 'night' : 'day');
   setZoom(0, false);
   resize();
+  if(localPreview && standalone) {
+    const key='atlas-preview-spore-north-camera';
+    if(firstWorld==='spore') {
+      let saved;
+      try { saved=JSON.parse(sessionStorage.getItem(key)); } catch {}
+      cosmos.restoreSporePreview(saved);
+      worldOrbitTime=null;
+    }
+    const saveView=()=>{
+      if(coverOpen || layout!=='cosmos') return;
+      const view=cosmos.sporePreviewState();
+      if(view) {
+        try { sessionStorage.setItem(key,JSON.stringify(view)); } catch {}
+      }
+    };
+    import('./local-preview.js').then(module=>module.watchPreview(saveView));
+  }
   maybeShowTouchHint();
 })();
