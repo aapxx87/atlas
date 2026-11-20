@@ -10757,9 +10757,12 @@ const Cosmos=(()=>{
   }
 
   function frameForAtlas(camera,frame) {
-    if(frame?.amount) {
-      const {width,height,shift,amount}=frame;
-      camera.setViewOffset(width,height,0,shift*amount,width,height);
+    if(frame && (frame.amount || frame.panX || frame.panY)) {
+      const {width,height,shift,amount,panX,panY}=frame;
+      // Offsetting the projection moves every depth by the same screen distance.
+      const x=-width*panX*(1-amount);
+      const y=shift*amount-height*panY*(1-amount);
+      camera.setViewOffset(width,height,x,y,width,height);
     } else if(camera.view?.enabled) camera.clearViewOffset();
   }
 
@@ -11079,7 +11082,7 @@ const Cosmos=(()=>{
         entry.coverRadius??=worldRadius(entry.root);
         // The Frost Grove ships move beyond the surface scenery during the chase.
         const radius=Math.max(entry.coverRadius,entry.id==='duel'?5.4:0)*entry.root.scale.x;
-        distance=lerp(distance,fitDistance(radius,arrivalFov,atlasFrame.span),atlasAmount);
+        distance=lerp(distance,Math.max(distance*1.12,fitDistance(radius,arrivalFov,atlasFrame.span)),atlasAmount);
       }
       if(entry.story) {
         const offset=cover?0:(entry.aimHeight ?? (entry.id==='rose'?.46:0));
@@ -11850,7 +11853,7 @@ const Cosmos=(()=>{
   let atlasWarmTimer = null;
   let atlasWarmIdle = null;
   let atlasWarmLeft = 0;
-  const atlasFrame = {width:0,height:0,shift:0,span:1,amount:0};
+  const atlasFrame = {width:0,height:0,shift:0,span:1,amount:0,panX:0,panY:0};
   const worldRadii = new WeakMap();
   const preparedWorlds = new Set();
   let atlasExitTimer = null;
@@ -12133,11 +12136,12 @@ const Cosmos=(()=>{
   }
 
   function measureAtlasFrame(width=surface.clientWidth,height=surface.clientHeight) {
-    if(!standalone || coverOpen || compactAtlas.matches || !width || !height) return;
-    const margin=Math.min(28,height*.042);
-    const bottom=Math.max(2*margin+1,worldAtlas.offsetTop);
+    if(!width || !height) return;
     atlasFrame.width=width;
     atlasFrame.height=height;
+    if(!standalone || coverOpen) return;
+    const margin=Math.min(28,height*.042);
+    const bottom=THREE.MathUtils.clamp(worldAtlas.offsetTop,2*margin+1,height);
     atlasFrame.shift=(height-bottom)/2;
     atlasFrame.span=.96*(Math.min(width,bottom)-2*margin)/height;
   }
@@ -12236,6 +12240,7 @@ const Cosmos=(()=>{
   }
 
   function resetView() {
+    atlasFrame.panX=atlasFrame.panY=0;
     setDemoPlaying(false,true);
     if(layout==='cosmos') {
       if(standalone) {
@@ -12340,6 +12345,7 @@ const Cosmos=(()=>{
   }
 
   function selectWorld(id,startup=false) {
+    atlasFrame.panX=atlasFrame.panY=0;
     preparedWorlds.add(id);
     queueAtlasWarmup();
     clearCameraMotion();
@@ -12440,15 +12446,22 @@ const Cosmos=(()=>{
     viewTarget.copy(view);
   }
 
+  function pan(dx,dy) {
+    if(coverOpen || atlasOpen || !atlasFrame.width || !atlasFrame.height) return;
+    atlasFrame.panX=THREE.MathUtils.clamp(atlasFrame.panX+dx/atlasFrame.width,-.48,.48);
+    atlasFrame.panY=THREE.MathUtils.clamp(atlasFrame.panY+dy/atlasFrame.height,-.48,.48);
+  }
+
   function readPinch() {
     const [one, two] = pointers.values();
-    return {x:two.x-one.x,y:two.y-one.y,twist:one.touch && two.touch};
+    return {x:two.x-one.x,y:two.y-one.y,cx:(one.x+two.x)/2,cy:(one.y+two.y)/2,twist:one.touch && two.touch};
   }
 
   function updatePinch() {
     if (!pinch || pointers.size !== 2 || flight || (layout==='cosmos' && cosmos.flying())) return;
     const previous = pinch;
     pinch = readPinch();
+    if(pinch.twist) pan(pinch.cx-previous.cx,pinch.cy-previous.cy);
     const before = Math.hypot(previous.x,previous.y);
     const after = Math.hypot(pinch.x,pinch.y);
     if (pinch.twist && before > 18 && after > 18) {
@@ -12466,7 +12479,9 @@ const Cosmos=(()=>{
 
   function pointerDown(event) {
     if (flight) return;
-    if (event.button !== 0 && event.pointerType === 'mouse') return;
+    const secondary=event.pointerType==='mouse' && (event.button===2 || (event.button===0 && event.ctrlKey));
+    if (secondary && (coverOpen || atlasOpen)) return;
+    if (event.button !== 0 && event.pointerType === 'mouse' && !secondary) return;
     if (pointers.size === 2) return;
     if (!pointers.size) {
       mapPress = cosmicLinks.contains(event.target);
@@ -12475,7 +12490,7 @@ const Cosmos=(()=>{
     }
     const receiver = event.target.closest('[data-cosmic-target]') || surface;
     receiver.setPointerCapture(event.pointerId);
-    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, touch: event.pointerType==='touch' });
+    pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, pan:secondary, touch: event.pointerType==='touch' });
     if (pointers.size === 2) pinch = readPinch();
     velocity.set(0,0);
     viewTarget.copy(view);
@@ -12505,7 +12520,8 @@ const Cosmos=(()=>{
     }
     if(!coverOpen) setDemoPlaying(false,true);
     selectPlace(null);
-    if (!isPinch) {
+    if (previous.pan) pan(dx,dy);
+    else if (!isPinch) {
       const elapsed = Math.max(8, event.timeStamp - lastMove) / 1000;
       orbit(dx,dy);
       velocity.set(dx / elapsed, dy / elapsed).clampLength(0, 1000);
@@ -12546,6 +12562,9 @@ const Cosmos=(()=>{
   }
 
   for (const area of [surface,cosmicLinks]) {
+    area.addEventListener('contextmenu',event=>{
+      if(!coverOpen && !atlasOpen) event.preventDefault();
+    });
     area.addEventListener('pointerdown', pointerDown);
     area.addEventListener('pointermove', pointerMove);
     area.addEventListener('pointerup', pointerEnd);
@@ -12889,7 +12908,7 @@ const Cosmos=(()=>{
     }
     lastFrameTime = now;
     updatePinch();
-    const atlasTarget=Number(standalone && !coverOpen && !compactAtlas.matches && atlasOpen && atlasFrame.width>0);
+    const atlasTarget=Number(standalone && !coverOpen && atlasOpen && atlasFrame.width>0);
     atlasFrame.amount=blend(atlasFrame.amount,atlasTarget,reducedMotion.matches?1:1-Math.exp(-11*elapsed/1000));
     const framingAtlas=Math.abs(atlasFrame.amount-atlasTarget)>.002;
     if(!framingAtlas) atlasFrame.amount=atlasTarget;
@@ -12980,7 +12999,7 @@ const Cosmos=(()=>{
     if(atlasFrame.amount) {
       const root=atlas.bodies.get(active).root;
       if(!worldRadii.has(root)) worldRadii.set(root,Cosmos.worldRadius(root));
-      distance=blend(distance,Cosmos.fitDistance(worldRadii.get(root),surfaceFov,atlasFrame.span),atlasFrame.amount);
+      distance=blend(distance,Math.max(distance*1.12,Cosmos.fitDistance(worldRadii.get(root),surfaceFov,atlasFrame.span)),atlasFrame.amount);
     }
     camera.position.copy(direction).multiplyScalar(distance).add(worldCenter).addScaledVector(vertical,flightArc);
     camera.up.copy(vertical);
