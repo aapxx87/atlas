@@ -4791,6 +4791,467 @@ const Atlas = (() => {
 })();
 
 ;
+// The mine is staged in the asteroid's own coordinates so the actors and fire
+// stay together while the visitor rotates, zooms or switches between worlds.
+const BeltMine=(()=>{
+  const {Group,Vector3,Quaternion,Matrix4}=THREE;
+  const {model,batchRepeatedParts}=Scenery;
+  const {smoothstep,lerp,clamp,euclideanModulo}=THREE.MathUtils;
+  const tau=2*Math.PI,period=54,up=new Vector3(0,1,0),steel='#394755';
+  const cyl=new THREE.CylinderGeometry(1,1,1,12);
+  const rock=new THREE.IcosahedronGeometry(1,0);
+  const glow=color=>new THREE.MeshBasicMaterial({color,toneMapped:false});
+  const joint=(parent,x=0,y=0,z=0)=>{
+    const group=new Group();parent.add(group);group.position.set(x,y,z);return group;
+  };
+  function rod(parent,a,b,r,color) {
+    const axis=b.clone().sub(a);
+    const part=model(parent,cyl,color,a.clone().lerp(b,.5).toArray(),[r,axis.length(),r]);
+    part.quaternion.setFromUnitVectors(up,axis.normalize());return part;
+  }
+
+  function miningRobot(world) {
+    const root=joint(world);root.name='Одноколесный рудокоп';
+    const wheel=joint(root,0,.205,0);
+    for(const [x,r,w,c] of [[0,.204,.144,'#303841'],[-.077,.166,.023,'#788a8c'],[.077,.166,.023,'#a0b4ae'],
+      [-.095,.088,.024,'#cd8055'],[.095,.088,.024,'#d88c56']])
+      model(wheel,cyl,c,[x,0,0],[r,w,r],[0,0,Math.PI/2]);
+    for(let k=0;k<12;k++){
+      const a=k*tau/12;
+      model(wheel,'box','#48525b',[0,.198*Math.sin(a),.198*Math.cos(a)],[.139,.021,.019],[-a,0,0]);
+    }
+    batchRepeatedParts(wheel);
+    const body=joint(root,0,.205,0);
+    rod(body,new Vector3(.093,0,0),new Vector3(.072,.23,-.012),.032,steel);
+    model(body,'box','#c97649',[0,.344,0],[.335,.280,.308],[.06,0,-.04]);
+    model(body,'box','#ead7aa',[0,.340,.152],[.254,.204,.021]);
+    model(body,'box','#394c50',[0,.359,.165],[.028,.084,.009]);
+    model(body,'box','#394c50',[0,.293,.165],[.028,.019,.009]);
+    for(let k=0;k<4;k++) model(body,'box',steel,[.169,.335,-.080+k*.044],[.010,.081,.017]);
+    for(const x of [-.085,.085])model(body,'box','#586669',[x,.499,-.03],[.021,.048,.095]);
+    model(body,'box','#777975',[0,.526,-.03],[.185,.020,.043]);
+    const clampArm=joint(body,.151,.317,.021),bitArm=joint(body,-.15,.32,.018);
+    function arm(base,side){
+      rod(base,new Vector3(),new Vector3(side*.095,-.085,.06),.018,'#a3a6a1');
+      model(base,'round',steel,[side*.095,-.085,.06],[.034,.034,.034]);
+      rod(base,new Vector3(side*.095,-.085,.06),new Vector3(side*.107,-.141,.157),.017,'#818888');
+      return joint(base,side*.107,-.141,.157);
+    }
+    const hand=arm(clampArm,1),drill=arm(bitArm,-1);
+    const jaws=[-1,1].map(side=>{
+      const jaw=joint(hand,side*.043,0,.005);
+      model(jaw,'box','#da965e',[side*.009,0,.039],[.024,.033,.087],[0,side*.23,0]);
+      model(jaw,'box','#e3a66d',[0,0,.086],[.036,.030,.025],[0,-side*.42,0]);
+      return jaw;
+    });
+    model(drill,cyl,'#47646a',[0,0,.026],[.054,.095,.054],[Math.PI/2,0,0]);
+    const bit=model(drill,new THREE.ConeGeometry(.041,.135,6),'#c1c8ba',[0,0,.138],[1,1,1],[Math.PI/2,0,0]);
+    return {root,wheel,body,clampArm,bitArm,hand,jaws,bit,drill};
+  }
+
+  const whiteEnamel=new THREE.MeshStandardMaterial({
+    color:'#ffffff',roughness:.69,emissive:'#e6ecf4',emissiveIntensity:.42
+  });
+  function gunship(world,guard,index) {
+    const root=joint(world);
+    root.name=guard?'Синий охранник':'Белый налетчик '+(index+1);
+    const hull=joint(root),armor=guard?'#40799b':whiteEnamel,edge=guard?'#27485f':'#bac4cb';
+    const lens=glow(guard?'#ff8990':'#ff775e'),muzzles=[],slides=[];
+    if(guard){
+      hull.scale.setScalar(1.35);
+      model(hull,'box',armor,[0,.025,-.012],[.342,.29,.34],[.07,0,0]);
+      model(hull,'box',edge,[0,.057,.167],[.264,.204,.056]);
+      model(hull,'box',lens,[0,.050,.200],[.158,.118,.024]);
+      model(hull,'box','#638da0',[0,.161,.181],[.265,.039,.084],[.14,0,0]);
+      model(hull,cyl,'#7a4956',[0,.189,-.035],[.072,.052,.072]);
+      model(hull,'round',lens,[0,.223,-.035],[.055,.042,.055]);
+      rod(hull,new Vector3(.105,.14,-.107),new Vector3(.105,.345,-.115),.008,steel);
+    }else{
+      model(hull,'round',armor,[0,0,0],[.242,.217,.218]);
+      model(hull,'round',steel,[0,-.004,.170],[.209,.133,.077]);
+      model(hull,'round','#8f9898',[-.080,.031,.226],[.060,.062,.030]);
+      model(hull,'round',lens,[-.080,.031,.252],[.031,.033,.014]);
+      model(hull,'round','#65707b',[.091,.018,.227],[.038,.041,.019]);
+      model(hull,'box','#bc715a',[.03,.160,.135],[.036,.072,.027],[-.66,0,0]);
+    }
+    for(const side of [-1,1]){
+      const x=side*(guard?.181:.252),y=guard?-.127:-.016;
+      model(hull,cyl,edge,[x,y,-.020],[.099,.105,.099],[0,0,Math.PI/2]);
+      const tubeRadius=guard?.098:.084;
+      model(hull,cyl,armor,[x,y,.105],[tubeRadius,.273,tubeRadius],[Math.PI/2,0,0]);
+      for(const z of [.008,.213]) model(hull,cyl,'#52616c',[x,y,z],[tubeRadius+.003,.020,tubeRadius+.003],[Math.PI/2,0,0]);
+      if(guard) {
+        // Two short blue cooling jackets tuck under the shoulders, like the reference.
+        for(let row=0;row<2;row++)for(let k=0;k<6;k++){
+          const a=tau*(k+row*.5)/6;
+          model(hull,'round','#233948',[x+.095*Math.cos(a),y+.095*Math.sin(a),.067+.083*row],
+            [.010,.024,.032],[0,0,a]);
+        }
+      }
+      muzzles.push(new Vector3(x,y,.333));
+    }
+    batchRepeatedParts(hull);
+    // Keep each sliding barrel separate from the batched armor.
+    for(const muzzle of muzzles){
+      const slide=joint(hull,muzzle.x,muzzle.y,0);slides.push(slide);
+      model(slide,cyl,'#899391',[0,0,.260],[.048,.107,.048],[Math.PI/2,0,0]);
+      model(slide,cyl,steel,[0,0,.318],[.035,.018,.035],[Math.PI/2,0,0]);
+    }
+    return {root,hull,muzzles,slides};
+  }
+
+  function create(world,surface,rocks){
+    const miner=miningRobot(world),guard=gunship(world,true,0);
+    const attackers=Array.from({length:3},(_,i)=>gunship(world,false,i));
+    // Sample the triangular surface locally; the moving wheel uses the same ground as the scenery.
+    const ray=new THREE.Raycaster(),floorMesh=new THREE.Mesh(surface.geometry,surface.material);
+    const down=new Vector3(0,-1,0),v=new Vector3(),q=new Vector3();
+    function floor(x,z){
+      ray.set(v.set(x,3,z),down);return ray.intersectObject(floorMesh,false)[0].point.y;
+    }
+    const seam=joint(world,-1.28,floor(-1.28,.88),.88),bin=joint(world,1.35,floor(1.35,.74),.74);
+    seam.name='Медная жила';bin.name='Приемник руды';
+    const ore=['#62c6b1','#97e0c8','#cd9967'];
+    model(seam,rock,'#805e55',[0,.10,0],[.35,.27,.28],[.24,.6,.17]);
+    model(seam,rock,ore[0],[.155,.163,-.154],[.112,.085,.104],[.32,.66,-.28]);
+    for(let i=0;i<8;i++){
+      const a=i*2.4;
+      model(seam,rock,ore[i%3],[.22*Math.cos(a),.16+.10*Math.sin(i),.18*Math.sin(a)],
+        [.07,.12,.075],[.24,a,.35*Math.cos(a)]);
+    }
+    model(bin,'box','#4d6164',[0,.08,0],[.54,.14,.48]);
+    for(const side of [-1,1]){
+      model(bin,'box','#798d89',[side*.248,.216,0],[.046,.234,.48],[0,0,-side*.08]);
+      model(bin,'box','#ab805e',[0,.202,side*.22],[.51,.205,.04]);
+      model(bin,'box','#ddaf72',[0,.312,side*.22],[.54,.023,.050]);
+    }
+    for(const x of [-.18,.18]) for(const z of [-.16,.16])
+      model(bin,cyl,steel,[x,.059,z],[.064,.048,.064],[Math.PI/2,0,0]);
+    batchRepeatedParts(seam);batchRepeatedParts(bin);
+    const cuttings=Array.from({length:7},(_,i)=>model(world,rock,ore[i%3],[0,0,0],[1,1,1]));
+    const drillTip=new Vector3();
+    const loads=[];
+    for(let i=0;i<3;i++)loads.push(model(world,rock,ore[i],[0,0,0],[.096,.088,.103],[.33,i,.30]));
+    const events=[],hits=Array.from({length:5},()=>[]);
+    // Actors 0..2 are raiders, 3 the sentry and 4 the miner. Each volley has one marked impact.
+    function volley(start,source,target,count,spacing,hit){
+      for(let k=0;k<count;k++) events.push({at:start+k*spacing,source,target,k,hit:hit&&k===count-1});
+      if(hit)hits[target].push(start+(count-1)*spacing+.14);
+    }
+    const raids=[];
+    for(let n=0;n<6;n++){
+      for(let j=0;j<3;j++){
+        const start=n*9+j*3,id=(n+j)%3,bypass=n%3===0&&j===2;
+        raids.push({start,id,bypass});
+        volley(start+.54,id,bypass?4:3,5,.15,j===2 || (j===0&&n%2===1));
+        volley(start+.89,3,id,15,.052,true);
+        volley(start+2.04,3,(id+1)%3,9,.056,false);
+      }
+    }
+    const cycle=t=>euclideanModulo(t,period);
+    function since(t,actor){
+      let age=period;
+      for(const event of hits[actor]) age=Math.min(age,cycle(t-event));
+      return age;
+    }
+    const fallTimes=hits[4];
+    function workerTime(t) {
+      // Stop the work clock through each fall, then resume the exact task in progress.
+      let pause=0;for(const hit of fallTimes)pause+=clamp(t-hit,0,2.4);
+      return (t-pause)*54/(54-fallTimes.length*2.4);
+    }
+    const shotTint=[glow('#ffba79'),glow('#aeffff')];
+    const origin=new Vector3(),aim=new Vector3(),matrix=new Matrix4(),upRot=new Quaternion();
+    const rota=new THREE.Euler();
+    const arc=t=>Math.sin(Math.PI*clamp(t,0,1));
+    function placeMiner(t) {
+      const clock=workerTime(t),p=clock%18;
+      const outbound=smoothstep(p,3.9,8.9),back=smoothstep(p,12.3,17.2),along=outbound-back;
+      const x=lerp(-.92,.95,along),z=1.01+.15*Math.sin(Math.PI*along);
+      const age=since(t,4),fallen=smoothstep(age,0,.34)*(1-smoothstep(age,1.30,2.35));
+      miner.root.position.set(x,floor(x,z),z);
+      miner.root.rotation.y=-1.85+3.87*(smoothstep(p,2.8,4.35)-smoothstep(p,11.1,12.8));
+      miner.root.rotation.z=1.28*fallen;
+      miner.root.position.y+=.15*fallen;
+      miner.wheel.rotation.x=(Math.floor(clock/18)*2+outbound+back)*3*Math.PI;
+      const drilling=smoothstep(p,0,.42)*(1-smoothstep(p,2.55,3.1));
+      miner.body.rotation.x=.09*drilling+.05*Math.sin(clock*11)*drilling;
+      miner.bitArm.rotation.x=.55*drilling;
+      miner.bit.rotation.y=clock*20;
+      if(drilling>.05)world.worldToLocal(miner.drill.localToWorld(drillTip.set(0,0,.201)));
+      for(let k=0;k<cuttings.length;k++){
+        const chip=cuttings[k],u=(clock*2.2+k*.37)%1,angle=k*2.4;
+        chip.visible=drilling>.05;
+        if(!chip.visible)continue;
+        chip.position.copy(drillTip);
+        chip.position.x+=u*.13*Math.cos(angle);chip.position.z+=u*.14*Math.sin(angle);
+        chip.position.y+=.12*arc(u)-.09*u*u;
+        chip.scale.setScalar(.021*(1-u)*drilling);
+      }
+      miner.clampArm.rotation.x=.44*(1-smoothstep(p,2.4,3.6))-.70*(smoothstep(p,2.4,3.7)-smoothstep(p,9.2,10.2));
+      miner.jaws.forEach((jaw,i)=>jaw.rotation.y=(i?1:-1)*(.48-.55*(smoothstep(p,2.2,2.7)-smoothstep(p,9.7,10.15))));
+      for(let i=0;i<loads.length;i++){
+        const phase=clock-i*18,load=loads[i];
+        load.visible=phase>=1.65 && clock<53.9;
+        if(!load.visible)continue;
+        const drop=smoothstep(phase,9.8,10.44);
+        const hand=miner.hand.localToWorld(q.set(0,0,.084));
+        world.worldToLocal(hand);
+        const pick=smoothstep(phase,1.65,2.55);
+        load.position.set(-1.27,seam.position.y+.25,.98).lerp(hand,pick);
+        aim.set(bin.position.x+(.12*(i-1)),bin.position.y+.20+.043*i,bin.position.z+.06*Math.cos(i*2));
+        load.position.lerp(aim,drop);load.position.y+=.20*arc(drop);
+        const drain=smoothstep(clock,51.8,53.9);
+        load.position.y-=.22*drain;load.scale.set(.096,.088,.103).multiplyScalar((1-.98*drain)*smoothstep(phase,1.65,1.99));
+      }
+    }
+    const ships=[...attackers,guard];
+    const obstacles=rocks.map(mesh=>({center:mesh.position,radius:Math.max(...mesh.scale.toArray())}));
+    function flyAbove(pos,center,clearance) {
+      const dx=pos.x-center.x,dz=pos.z-center.z;
+      // A parabola clears the obstacle sphere and begins the climb before its edge.
+      pos.y=Math.max(pos.y,center.y+clearance-.48*(dx*dx+dz*dz)/clearance);
+    }
+    const chest=new Vector3();
+    function sites(t){
+      placeMiner(t);
+      const a=t*tau/period,leg=Math.floor(t/3)%raids.length,raid=raids[leg],phase=t-raid.start;
+      const previous=raids[(leg+raids.length-1)%raids.length];
+      chest.copy(miner.root.position);chest.y+=.32;
+      for(let i=0;i<3;i++){
+        const pos=attackers[i].root.position;
+        const angle=3*a+i*tau/3+.26*Math.sin(5*a+i*.94);
+        // Orbit wide, cut inward before firing, then climb and peel outward on a hit.
+        let dive=0;
+        for(const pass of raids) if(pass.id===i){
+          const u=cycle(t-pass.start+1);
+          dive=Math.max(dive,smoothstep(u,0,1.47)*(1-smoothstep(u,2.14,3.15)));
+        }
+        const recoil=arc(since(t,i)/1.22),radius=2.89+.18*Math.sin(4*a+i)-.71*dive+.43*recoil;
+        pos.set(radius*Math.cos(angle),1.65+.30*Math.sin(6*a+i*1.7)-.38*dive+.28*recoil,
+          .20+.86*radius*Math.sin(angle));
+        // Rise over the far-side arch and the stones floating beside it.
+        pos.y+=.76*(1-smoothstep(pos.z,-1.10,.30));
+        flyAbove(pos,chest,2.68);
+        for(const {center,radius} of obstacles)flyAbove(pos,center,radius+.49);
+      }
+      const post=guard.root.position;
+      const switchSide=smoothstep(phase,0,.75);
+      aim.copy(attackers[previous.id].root.position).lerp(attackers[raid.id].root.position,switchSide);
+      aim.sub(chest);
+      const intercept=Math.min(.96+.08*Math.sin(6*a),aim.length()*.40);
+      aim.normalize();
+      const dodge=(raid.bypass?.48:0)*arc((phase-.35)/1.37);
+      post.copy(chest).addScaledVector(aim,intercept);
+      post.x+=aim.z*dodge;post.z-=aim.x*dodge;
+      post.y=Math.max(post.y+.07,.63)+.10*arc(since(t,3)/1.1);
+      for(const {center,radius} of obstacles)flyAbove(post,center,radius+.52);
+    }
+    const targets=[...ships.map(ship=>ship.root.position),new Vector3()];
+    function pose(t) {
+      sites(t);
+      targets[4].copy(miner.root.position);targets[4].y+=.32;
+      for(let id=0;id<4;id++){
+        const ship=ships[id],age=since(t,id);
+        let behind=Infinity,ahead=Infinity,previous,next;
+        for(const e of events) if(e.source===id){
+          const past=cycle(t-e.at),future=cycle(e.at-t);
+          if(past<behind){behind=past;previous=e;}
+          if(future<ahead){ahead=future;next=e;}
+        }
+        const swing=id===3?smoothstep(behind,.025,Math.min(.32,behind+ahead)):
+          smoothstep(behind/Math.max(.001,behind+ahead),.18,.84);
+        for(let k=0;k<ship.slides.length;k++){
+          const age=behind+(previous.k%2===k?0:1);
+          ship.slides[k].position.z=id===3?-.057*arc(age/.088):0;
+        }
+        aim.copy(targets[previous.target]).lerp(targets[next.target],swing).sub(ship.root.position);
+        ship.hull.quaternion.setFromRotationMatrix(matrix.lookAt(aim,origin,up));
+        const recoil=arc(age/1.65);
+        rota.set(-.29*recoil,0,(id%2?1:-1)*tau*smoothstep(age,.05,1.45)+(id===3?.10:.22)*Math.sin(t*tau*6/period+id));
+        ship.hull.quaternion.multiply(upRot.setFromEuler(rota));
+      }
+    }
+    // Cache launch and hit positions in asteroid coordinates. Playback also works when seeking or reloading.
+    for(const e of events){
+      pose(e.at);
+      const ship=ships[e.source];
+      e.from=ship.muzzles[e.k%2].clone().multiply(ship.hull.scale).applyQuaternion(ship.hull.quaternion).add(ship.root.position);
+      pose(cycle(e.at+.14));e.to=targets[e.target].clone();
+      if(!e.hit){e.to.x+=(e.k%2?1:-1)*.19;e.to.y+=.13+.05*Math.sin(e.at);}
+      e.delta=e.to.clone().sub(e.from);
+    }
+    const bullets=Array.from({length:12},()=>model(world,cyl,shotTint[0],[0,0,0],[1,1,1]));
+    // Mount a tapered flash on each barrel so it follows the ship through a turn.
+    const flareShape=new THREE.ConeGeometry(1,1,6);
+    const flashes=ships.map((ship,id)=>ship.muzzles.map(muzzle=>{
+      const flash=model(ship.hull,flareShape,shotTint[id===3?1:0],muzzle.toArray(),[1,1,1],[Math.PI/2,0,0]);
+      flash.castShadow=false;
+      return flash;
+    }));
+    for(const part of bullets) part.castShadow=false;
+    const effects=targets.map((_,id)=>{
+      const root=joint(world),embers=[],puffs=[];
+      const flare=glow(id===4?'#9ffde5':'#ffbb65');
+      for(let i=0;i<6;i++)embers.push(model(root,rock,flare,[0,0,0],[1,1,1]));
+      for(let i=0;i<3;i++)puffs.push(model(root,rock,new THREE.MeshBasicMaterial({color:'#a79eaa',transparent:true,depthWrite:false}),[0,0,0],[1,1,1]));
+      for(const part of root.children)part.castShadow=false;
+      return {root,embers,puffs};
+    });
+    // One extra delivery between ordinary three-load shifts. All poses are seekable.
+    const episodeLength=29, separation=19.12;
+    const nugget=joint(world);
+    nugget.name='Магнитный самородок';
+    model(nugget,rock,'#297ea7',[0,0,0],[.196,.164,.179],[.26,.35,.18]);
+    const crystal=new THREE.MeshStandardMaterial({color:'#8ff3ff',emissive:'#36cce7',emissiveIntensity:.48,flatShading:true});
+    for(const [x,y,z,size] of [[-.07,.11,.05,.081],[.105,.035,.088,.072],[.056,.085,-.077,.062]]) {
+      model(nugget,rock,crystal,[x,y,z],[size,1.28*size,size],[.30,x*7,-.21]);
+    }
+    batchRepeatedParts(nugget);
+    const binHome=bin.position.clone(),landing=new Vector3(),stone=new Vector3();
+    const attached=[new Vector3(0,.34,-.04),new Vector3(-.43,-.06,.06),new Vector3(.40,-.16,.17)];
+    const kick=[new Vector3(-.45,1.35,-.60),new Vector3(-1.65,.60,.50),new Vector3(1.70,.68,.18)];
+    const tumble=new Quaternion(),heading=new Quaternion(),dronePoint=new Vector3(),offset=new Vector3();
+    const pullIn=[[6.2,8.6],[10.3,11.8],[13.5,14.9]];
+
+    function magneticPose(t) {
+      // Use the usual flight paths on entry and exit so the formation rejoins without a cut.
+      pose(cycle(t*period/episodeLength));
+      placeMiner(0);
+      const step=(a,b)=>smoothstep(t,a,b);
+      const cartTrip=step(13.6,17.9)-step(22.5,25.5);
+      bin.position.x=binHome.x-.85*cartTrip;
+      bin.position.z=binHome.z+.37*cartTrip;
+      bin.position.y=floor(bin.position.x,bin.position.z);
+      const atCart=step(8.4,13.35)-step(25.55,28.95);
+      const pull=step(.2,2.5)*(1-step(2.5,2.82));
+      const flop=step(2.52,3.05)*(1-step(4.05,5.1));
+      const pat=arc((t-21.05)/.74);
+      const walkX=lerp(-.92,bin.position.x-.38,atCart)+.11*pat;
+      const walkZ=lerp(1.01,bin.position.z+.065,atCart)+.095*pat;
+      miner.root.position.set(walkX+.08*flop,floor(walkX,walkZ)+.10*flop,walkZ);
+      miner.root.rotation.y=-1.85+3.38*(step(5.0,6.1)-step(25.45,26.55));
+      miner.root.rotation.x=-1.19*flop-.20*pull+.14*pat;
+      miner.body.rotation.x=.09*pull*Math.sin(t*19);
+      miner.wheel.rotation.x=12*step(.2,2.75)+(walkX+.92)/.204;
+      miner.clampArm.rotation.x=.44-.61*pull-.57*atCart+.70*pat;
+      miner.jaws.forEach((jaw,i)=>jaw.rotation.y=(i?1:-1)*(.46-.48*pull-.34*atCart));
+      for(const chip of cuttings)chip.visible=false;
+      for(const load of loads)load.visible=false;
+
+      const roll=step(2.67,6.28),lift=step(8.6,10.9),carry=step(10.8,17.95);
+      const rollX=lerp(-1.18,.13,roll),rollZ=lerp(.96,1.39,roll);
+      stone.set(rollX,floor(rollX,rollZ)+.15+.11*arc((t-2.67)/.66),rollZ);
+      world.worldToLocal(miner.hand.localToWorld(offset.set(0,0,.09)));
+      stone.lerp(offset,pull*(1-step(2.30,2.65)));
+      stone.x+=.37*carry+.18*Math.sin(t*1.55)*arc((t-10.7)/7.2);
+      stone.z-=.28*carry;
+      stone.y+=1.62*lift+.19*arc(carry);
+      landing.set(bin.position.x,bin.position.y+.30,bin.position.z);
+      const fall=clamp((t-separation)/1.12,0,1);
+      stone.lerp(landing,fall*fall);
+      stone.y+=.10*arc((t-separation-1.12)/.32);
+      nugget.visible=true;
+      nugget.position.copy(stone);
+      const settle=1-step(23.5,25.1);
+      nugget.scale.setScalar((.12+.88*step(0,1.35))*settle);
+      nugget.rotation.set(.4+roll*4.1+carry*3.8,roll*2.3+lift*1.8,.3+carry*4.8+fall*.8);
+
+      // The drones stick on different faces; the same rotation carries all three.
+      const tumbleTime=Math.min(t,separation);
+      tumble.setFromEuler(rota.set(.26*Math.sin(tumbleTime*1.8)*lift,.81*(tumbleTime-8.6)*lift,
+        1.2*Math.max(0,tumbleTime-10.8)));
+      for(let i=0;i<3;i++){
+        const ship=attackers[i];
+        const bind=step(...pullIn[i])*(1-step(20.05,23.15));
+        offset.copy(attached[i]).applyQuaternion(tumble);
+        // Once released, the drones fly away from the release point, not down with the ore.
+        dronePoint.set(.50,floor(.13,1.39)+.15+1.62,1.11);
+        if(t<=separation)dronePoint.copy(stone);
+        dronePoint.add(offset).addScaledVector(kick[i],step(separation,20.75));
+        if(i===2)ship.root.position.x+=.68*arc((t-12.1)/1.85);
+        ship.root.position.lerp(dronePoint,bind);
+        for(const obstacle of obstacles)flyAbove(ship.root.position,obstacle.center,obstacle.radius+.25);
+        aim.copy(stone).sub(ship.root.position);
+        heading.setFromRotationMatrix(matrix.lookAt(aim,origin,up));
+        // Carrier holds the stone underneath; the last drone is caught tail first.
+        heading.multiply(upRot.setFromEuler(rota.set(i===0?-.82:0,i===2?Math.PI*bind:0,
+          bind*(i===1?1.22:-.36)+tau*step(separation,21.1))));
+        ship.hull.quaternion.slerp(heading,step(.1,1.2)*(1-step(21.1,24)));
+      }
+      const watch=step(.35,2.3)*(1-step(21.15,25.15));
+      const sentry=guard.root;
+      dronePoint.set(lerp(-.65,-.39,atCart),1.03+.15*Math.sin(t*.87),.60);
+      sentry.position.lerp(dronePoint,watch);
+      aim.copy(stone).lerp(attackers[1].root.position,step(15.5,18.2)*(1-step(separation,19.8))).sub(sentry.position);
+      heading.setFromRotationMatrix(matrix.lookAt(aim,origin,up));
+      guard.hull.quaternion.slerp(heading,watch);
+      targets[4].copy(miner.root.position);targets[4].y+=.32;
+      for(const ship of ships)for(const slide of ship.slides)slide.position.z=0;
+    }
+
+    const rescueShots=[];
+    for(let k=0;k<8;k++){
+      const at=separation-.14-(7-k)*.055;
+      magneticPose(at);
+      const from=guard.muzzles[k%2].clone().multiply(guard.hull.scale).applyQuaternion(guard.hull.quaternion).add(guard.root.position);
+      magneticPose(at+.14);
+      rescueShots.push({at,source:3,k,from,delta:attackers[1].root.position.clone().sub(from)});
+    }
+    bin.position.copy(binHome);
+
+    return seconds=>{
+      // A short lead-in on first viewing, then three normal trips between episodes.
+      const clock=euclideanModulo(seconds+period-5,period+episodeLength);
+      const special=clock>=period,t=special?clock-period:clock;
+      bin.position.copy(binHome);
+      miner.root.rotation.x=0;
+      nugget.visible=false;
+      if(special)magneticPose(t);
+      else pose(t);
+      let count=0;
+      for(const pair of flashes)for(const flash of pair)flash.visible=false;
+      for(const e of special?rescueShots:events){
+        const age=special?t-e.at:cycle(t-e.at);
+        if(age<0)continue;
+        if(age>.155)continue;
+        const hot=e.source===3,bolt=bullets[count++],u=clamp(age/.14,0,1);
+        bolt.visible=true;bolt.material=shotTint[hot?1:0];
+        bolt.position.copy(e.from).addScaledVector(e.delta,u);
+        bolt.quaternion.setFromUnitVectors(up,v.copy(e.delta).normalize());
+        const width=hot?.026:.018;
+        bolt.scale.set(width,(hot?.34:.20)+.09*(1-u),width);
+        if(age<.066){
+          const barrel=e.k%2,ship=ships[e.source],flash=flashes[e.source][barrel];
+          const fade=1-age/.066,length=(hot?.18:.14)*fade,radius=(hot?.072:.054)*fade;
+          if(special)ship.slides[barrel].position.z=-.041*arc(age/.066);
+          flash.visible=true;
+          flash.scale.set(radius,length,radius);
+          flash.position.z=ship.muzzles[barrel].z+ship.slides[barrel].position.z+length*.5;
+        }
+      }
+      for(let i=count;i<bullets.length;i++)bullets[i].visible=false;
+      effects.forEach(({root,embers,puffs},id)=>{
+        const age=special?(id<3?t-separation:Infinity):since(t,id);
+        root.visible=age>=0 && age<2.05;if(!root.visible)return;
+        root.position.copy(targets[id]);
+        embers.forEach((ember,k)=>{
+          const u=clamp(age/(.32+.055*k),0,1),a=k*2.4+id;
+          ember.position.set(.30*u*Math.cos(a),u*(.46-.52*u)+.09*Math.sin(a)*u,.29*u*Math.sin(a));
+          ember.visible=u<1;ember.scale.set(.012,.036,.012).multiplyScalar(1-u);ember.rotation.z=-Math.cos(a);
+        });
+        puffs.forEach((puff,k)=>{
+          const u=clamp((age-k*.19)/1.43,0,1);
+          puff.position.set(.07*Math.sin(k+u*2),.06+.47*u,.04*k+.05*u);
+          puff.scale.setScalar(.04+.10*u);puff.material.opacity=.40*arc(u);
+        });
+      });
+    };
+  }
+  return {create};
+})();
+
+;
 const CosmicWorlds=(()=>{
   const {Color,Group,Mesh,Vector3}=THREE;
   const {clamp,smoothstep}=THREE.MathUtils;
@@ -4832,6 +5293,7 @@ const CosmicWorlds=(()=>{
     const rock=new Mesh(geo,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.97,side:THREE.DoubleSide}));
     rock.castShadow=rock.receiveShadow=true;
     parent.add(rock);
+    return rock;
   }
 
   function amberTree(root,x,y,z,size,lean) {
@@ -5113,7 +5575,7 @@ const CosmicWorlds=(()=>{
   function belt() {
     const group=new Group();
     group.userData.demoFocus=new Vector3(0,.42,-.12);
-    layers(group,[[-1.82,.61],[-1.49,1.53],[-.88,2.04],[-.30,2.15]],
+    const surface=layers(group,[[-1.82,.61],[-1.49,1.53],[-.88,2.04],[-.30,2.15]],
       ['#493e49','#82594e','#ae6851','#bd775c'],7122);
     // The gap under the arch stays open as the camera turns around it.
     for(let i=0;i<8;i++) {
@@ -5121,8 +5583,8 @@ const CosmicWorlds=(()=>{
       const x=Math.cos(a)*1.09,y=Math.sin(a)*1.22-.28;
       model(group,smallRock,i%2?'#bc7558':'#a56458',[x,y,-.30],[.50,.39,.41],[0,i*.45,a-Math.PI*.5]);
     }
-    for(const [x,y,z,s] of [[-1.7,.05,.45,.41],[1.47,.05,.70,.39],[-1.28,.19,-.61,.54],
-      [-.13,-.06,1.05,.27],[.68,-.075,.89,.18],[1.33,.60,-.71,.67]]) {
+    for(const [x,y,z,s] of [[-1.7,.05,.45,.41],[1.64,-.16,.13,.29],[-1.28,.19,-.61,.54],
+      [-.49,-.11,-.87,.27],[.68,-.10,-.93,.18],[1.33,.60,-.71,.67]]) {
       model(group,smallRock,'#bc7b62',[x,y,z],[s,s*.83,s*1.06],[.2,z,.17]);
     }
     for(const [x,y,z,s] of [[-2.72,1.05,-1,.37],[2.79,-.43,-.1,.46],[-2.4,-.91,1.4,.17],
@@ -5144,11 +5606,15 @@ const CosmicWorlds=(()=>{
     const scanMaterial=new THREE.MeshBasicMaterial({color:'#b4e0c6',transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide});
     const scan=model(drone,cone,scanMaterial,[0,-.041,.014],[1,1,1]);
     scan.castShadow=false;
+    const beltRocks=group.children.filter(part=>part.isMesh && part!==surface);
+    const mine=BeltMine.create(group,surface,beltRocks);
+    group.userData.rapidMotion=true;
     group.userData.animate=(seconds)=>{
+      mine(seconds);
       const t=(seconds+.5)%16.4;
       const going=smoothstep(t,1.42,5.17),home=smoothstep(t,11.11,15.17);
       const travel=going-home;
-      drone.position.set(-1.44+travel*2.82,.31+.24*Math.sin(Math.PI*travel)+.072*Math.sin(seconds*3.5),1.04-.48*travel);
+      drone.position.set(-1.44+travel*2.82,.31+.24*Math.sin(Math.PI*travel)+.072*Math.sin(seconds*3.5),-1.14+.11*travel);
       drone.rotation.set(.05*Math.sin(seconds*3.8),.87+1.32*smoothstep(t,9.2,11.4),.12*Math.sin(seconds*2.49));
       const active=smoothstep(t,5.21,5.80)-smoothstep(t,9.35,10.2);
       scan.visible=active>.025;
